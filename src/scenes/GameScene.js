@@ -134,9 +134,7 @@ export default class GameScene extends Phaser.Scene {
         this.events.on('actionPurify', () => this.actionPurify());
         this.events.on('actionUndo', () => this.actionUndo()); // UNDO Listener
         this.events.on('actionEndTurn', () => {
-            if (confirm("턴을 종료하시겠습니까?")) {
-                this.gameManager.endTurn();
-            }
+            this.gameManager.endTurn();
         });
     }
 
@@ -165,6 +163,8 @@ export default class GameScene extends Phaser.Scene {
             case 'PURIFY':
                 lastAction.target.setOwner(lastAction.prevOwner); // Restore Phonics
                 lastAction.target.setPower(lastAction.prevPower);
+                lastAction.target.isShielded = lastAction.prevShield; // Restore Shield
+                lastAction.target.draw();
                 break;
             case 'ATTACK':
                 lastAction.target.setOwner(lastAction.prevTargetOwner);
@@ -189,13 +189,14 @@ export default class GameScene extends Phaser.Scene {
 
         // Purify Mode Logic
         if (this.purifyMode) {
-            if (tile.ownerID === 9) { // If Target is Phonics
+            // Check if Target is Phonics (Owner 9) OR if it's a Special Tile occupied by Phonics (checking owner should suffice, but being explicit)
+            if (tile.ownerID === 9) {
                 this.tryPurify(tile, team);
             } else {
-                console.log("Invalid Purify Target");
+                console.log(`Invalid Purify Target: Owner ${tile.ownerID}`);
                 alert("Select a Phonics tile to Purify!");
             }
-            // Turn off mode after attempt (or keep on?) - usually easier to turn off
+            // Turn off mode
             this.purifyMode = false;
             return;
         }
@@ -249,12 +250,18 @@ export default class GameScene extends Phaser.Scene {
             target: target,
             prevOwner: 9,
             prevPower: target.power,
+            prevShield: target.isShielded,
             cost: 2
         });
 
-        // Effect
+        // Effect: Neutralize regardless of Power or Special Status
+        console.log(`Purifying Tile: ${target.q},${target.r} (Power: ${target.power}, Special: ${target.isSpecial})`);
+
         target.setOwner(0); // Neutral
         target.setPower(1); // Weak
+        target.isShielded = false; // Remove Shield if any
+        target.draw(); // Force Redraw
+
         team.ap -= 2;
         alert("Purification Successful!");
         this.events.emit('updateUI');
@@ -294,7 +301,7 @@ export default class GameScene extends Phaser.Scene {
         this.purifyMode = false; // Reset modes
         const team = this.gameManager.getCurrentTeam();
         if (!this.selectedTile || this.selectedTile.ownerID !== team.id) return;
-        if (team.ap < 3) return;
+        if (team.ap < 2) return;
 
         // Push History
         this.pushAction({
@@ -302,12 +309,12 @@ export default class GameScene extends Phaser.Scene {
             tile: this.selectedTile,
             prevPower: this.selectedTile.power,
             prevShield: false,
-            cost: 3
+            cost: 2
         });
 
         this.selectedTile.isShielded = true;
         this.selectedTile.draw();
-        team.ap -= 3;
+        team.ap -= 2;
         this.events.emit('updateUI');
     }
 

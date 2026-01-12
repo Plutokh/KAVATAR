@@ -23,7 +23,7 @@ export default class UIScene extends Phaser.Scene {
         const panelY = this.cameras.main.height - 350;
 
         this.recruitBtn = this.createButton(panelX, panelY, '징집 (1 AP)', () => this.gameScene.events.emit('actionRecruit'));
-        this.fortifyBtn = this.createButton(panelX, panelY + 60, '요새화 (3 AP)', () => this.gameScene.events.emit('actionFortify'));
+        this.fortifyBtn = this.createButton(panelX, panelY + 60, '요새화 (2 AP)', () => this.gameScene.events.emit('actionFortify'));
         this.purifyBtn = this.createButton(panelX, panelY + 120, '정화 (2 AP)', () => this.gameScene.events.emit('actionPurify'));
         this.purifyBtn.setVisible(false); // Hidden by default
 

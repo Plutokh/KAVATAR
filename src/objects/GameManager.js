@@ -61,6 +61,29 @@ export default class GameManager {
             // Team Turn
             this.calcAP(this.currentTurn);
             console.log(`Turn Start: Team ${this.currentTurn}`);
+
+            // New Logic: Clear Shields for THIS team (Duration = 1 Round)
+            // Shields applied last turn protect until NOW.
+            // Also: Power Decay (Power decreases by 1 each round, min 1)
+            for (let tile of this.grid.getAllTiles()) {
+                if (tile.ownerID === this.currentTurn) {
+                    let changed = false;
+
+                    // 1. Clear Shield
+                    if (tile.isShielded) {
+                        tile.isShielded = false;
+                        changed = true;
+                    }
+
+                    // 2. Power Decay
+                    if (tile.power > 1) {
+                        tile.power -= 1;
+                        changed = true;
+                    }
+
+                    if (changed) tile.draw();
+                }
+            }
             // Clear history for new turn
             if (this.scene) this.scene.actionHistory = [];
             this.scene.events.emit('updateUI'); // Notify UI to update
