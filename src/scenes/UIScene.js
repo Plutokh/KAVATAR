@@ -103,16 +103,85 @@ export default class UIScene extends Phaser.Scene {
         const actionStartY = height - 300;
         const actionGap = 55;
 
-        this.recruitBtn = this.createButton(actionX, actionStartY, '징집 (Q)', () => this.gameScene.events.emit('actionRecruit'));
-        this.fortifyBtn = this.createButton(actionX, actionStartY + actionGap, '요새화 (W)', () => this.gameScene.events.emit('actionFortify'));
-        this.expandBtn = this.createButton(actionX, actionStartY + actionGap * 2, '확장 (E)', () => this.gameScene.events.emit('actionExpand'));
-        this.purifyBtn = this.createButton(actionX, actionStartY + actionGap * 3, '정화 (R)', () => this.gameScene.events.emit('actionPurify'));
+        this.recruitBtn = this.createButton(actionX, actionStartY, '징집 (Q) 1Pt', () => this.gameScene.events.emit('actionRecruit'));
+        this.fortifyBtn = this.createButton(actionX, actionStartY + actionGap, '요새화 (W) 2Pt', () => this.gameScene.events.emit('actionFortify'));
+        this.expandBtn = this.createButton(actionX, actionStartY + actionGap * 2, '확장 (E) 3Pt', () => this.gameScene.events.emit('actionExpand'));
+        this.purifyBtn = this.createButton(actionX, actionStartY + actionGap * 3, '정화 (R) ?', () => this.gameScene.events.emit('actionPurify'));
         this.purifyBtn.setVisible(false);
 
-        // Undo / End Turn separate
+        // --- MANUAL AP CONTROL PANEL (Admin) ---
+        // Left of Action Panel
+        const adminX = actionX - 250; // Moved slightly more left for larger UI
+        const adminY = actionStartY + 50;
+
+        // 1. Team Selector (Text Button)
+        this.adminTargetId = 1;
+        const adminTeamNames = ['', '주황', '노랑', '초록', '파랑', '보라', '갈색'];
+
+        this.adminTeamText = this.add.text(adminX, adminY - 60, `대상: ${adminTeamNames[1]}`, {
+            fontFamily: 'Do Hyeon', fontSize: '30px', color: '#ffffff', backgroundColor: '#333333',
+            padding: { x: 15, y: 10 },
+            fixedWidth: 200, align: 'center'
+        }).setOrigin(0.5).setInteractive()
+            .on('pointerdown', () => {
+                this.adminTargetId++;
+                if (this.adminTargetId > 6) this.adminTargetId = 1; // Cycle 1-6
+                this.adminTeamText.setText(`대상: ${adminTeamNames[this.adminTargetId]}`);
+                this.adminTeamText.setColor(this.getColorString(this.adminTargetId)); // Match team color
+            });
+        this.adminTeamText.setStroke('#000000', 4);
+        this.adminTeamText.setColor(this.getColorString(1)); // Initial Color
+
+        // 2. Input Field (DOM)
+        // Styled to match the game UI (Dark background, White text, Border)
+        // Do Hyeon font family
+        const inputStyle = `
+            width: 140px; 
+            height: 50px; 
+            font-size: 32px; 
+            text-align: center; 
+            font-family: 'Do Hyeon', sans-serif;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            border: 2px solid white;
+            border-radius: 5px;
+            outline: none;
+        `;
+        this.adminApInput = this.add.dom(adminX, adminY + 10).createFromHTML(`<input type="number" id="adminApInput" style="${inputStyle}" value="0">`);
+
+        // Add listener for Enter key
+        this.adminApInput.addListener('keydown');
+        this.adminApInput.on('keydown', (event) => {
+            if (event.code === 'Enter' || event.key === 'Enter') {
+                const inputEl = document.getElementById('adminApInput');
+                if (inputEl) {
+                    const amount = parseInt(inputEl.value) || 0;
+                    if (amount !== 0) {
+                        this.gameScene.events.emit('actionAdminAP', { teamId: this.adminTargetId, amount: amount });
+                        inputEl.value = "0"; // Auto clear
+                    }
+                }
+            }
+        });
+
+        // 3. Apply Button
+        // Increased size and visual weight
+        this.createButton(adminX, adminY + 80, 'Pt 적용', () => {
+            const inputEl = document.getElementById('adminApInput');
+            if (inputEl) {
+                const amount = parseInt(inputEl.value) || 0;
+                if (amount !== 0) {
+                    this.gameScene.events.emit('actionAdminAP', { teamId: this.adminTargetId, amount: amount });
+                    inputEl.value = "0"; // Auto clear for better UX
+                }
+            }
+        }).setScale(1.0); // Reset scale to normal (was 0.8)
+
+        // Manual AP Control End ---
         // Undo / End Turn separate (Now Stacked Vertically Below Purify)
-        this.undoBtn = this.createButton(actionX, actionStartY + actionGap * 4, '되돌리기 (A)', () => this.gameScene.events.emit('actionUndo'));
-        this.endTurnBtn = this.createButton(actionX, actionStartY + actionGap * 5, '턴 종료 (SPC)', () => this.gameScene.events.emit('actionEndTurn'));
+        this.pauseBtn = this.createButton(actionX, actionStartY + actionGap * 4, '일시정지 (P)', () => this.gameScene.events.emit('actionTogglePause'));
+        this.undoBtn = this.createButton(actionX, actionStartY + actionGap * 5, '되돌리기 (A)', () => this.gameScene.events.emit('actionUndo'));
+        this.endTurnBtn = this.createButton(actionX, actionStartY + actionGap * 6, '턴 종료 (SPC)', () => this.gameScene.events.emit('actionEndTurn'));
 
 
         // Listen to updates - SAVE HANDLERS for cleanup
@@ -161,8 +230,18 @@ export default class UIScene extends Phaser.Scene {
         // 1. Timer
         const time = gm.timeLeft || 0;
         this.timerText.setText(time);
-        if (time <= 10) this.timerText.setColor('#ff0000');
-        else this.timerText.setColor('#ffeb3b');
+
+        // Timer color: Match Team Color, OR Red if low time
+        if (time <= 10) {
+            this.timerText.setColor('#ff0000'); // Warning Red
+        } else {
+            const currentTeam = gm.getCurrentTeam();
+            if (currentTeam) {
+                this.timerText.setColor(this.getColorString(currentTeam.id));
+            } else {
+                this.timerText.setColor('#ffeb3b'); // Default Yellow
+            }
+        }
 
         // 2. Round & Status
         this.roundText.setText(`ROUND ${gm.currentRound}`);
@@ -250,6 +329,11 @@ export default class UIScene extends Phaser.Scene {
         if (gm.isPart2 && !this.purifyBtn.visible) {
             this.purifyBtn.setVisible(true);
         }
+
+        if (this.pauseBtn) {
+            this.pauseBtn.setText(gm.isPaused ? '재개 (P)' : '일시정지 (P)');
+            this.pauseBtn.setStyle({ fill: gm.isPaused ? '#ffff00' : '#ffffff' });
+        }
     }
 
     showToast(message) {
@@ -277,9 +361,9 @@ export default class UIScene extends Phaser.Scene {
             '#FFA500', // 1 Orange
             '#FFFF00', // 2 Yellow
             '#00FF00', // 3 Green
-            '#0000FF', // 4 Blue
-            '#800080', // 5 Purple
-            '#8b4513', // 6 Brown
+            '#3399FF', // 4 Blue (Brightened from #0000FF)
+            '#CC66FF', // 5 Purple (Brightened from #800080)
+            '#D2B48C', // 6 Brown (Tan/Light Brown - Brightened from #8b4513)
             '#888888',
             '#888888',
             '#FF0000'  // 9 Phonics

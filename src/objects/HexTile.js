@@ -9,9 +9,10 @@ export default class HexTile extends Phaser.GameObjects.Container {
         this.index = index; // Sequential ID
 
         // Game Data
-        this.ownerID = 0; // 0: Neutral, 1-5: Teams, 9: Phonics
+        this.ownerID = 0; // 0: Neutral, 1-5: Teams, 9: PONIX
         this.power = 0;
         this.isShielded = false;
+        this.isSelected = false;
         this.isSpecial = false;
         this.specialName = '';
 
@@ -19,7 +20,7 @@ export default class HexTile extends Phaser.GameObjects.Container {
         this.graphics = scene.add.graphics();
         this.add(this.graphics);
 
-        this.text = scene.add.text(0, -5, '', {
+        this.text = scene.add.text(0, 5, '', { // Shifted down
             fontFamily: 'Black Han Sans',
             fontSize: `${size}px`,
             color: '#ffffff',
@@ -28,7 +29,7 @@ export default class HexTile extends Phaser.GameObjects.Container {
         }).setOrigin(0.5);
         this.add(this.text);
 
-        this.label = scene.add.text(0, 15, '', {
+        this.label = scene.add.text(0, 25, '', { // Shifted down
             fontFamily: 'Do Hyeon',
             fontSize: '12px',
             color: '#ffff00',
@@ -38,12 +39,12 @@ export default class HexTile extends Phaser.GameObjects.Container {
         this.add(this.label);
 
         // Coordinate Label (Small, Top) -> Now Sequential Index
-        this.coordLabel = scene.add.text(0, -30, `${index}`, { // Adjusted Y higher
+        this.coordLabel = scene.add.text(0, -25, `${index}`, { // Moved inside
             fontFamily: 'Black Han Sans', // Bold Font
-            fontSize: '14px', // Larger
-            color: '#000000', // Black
-            stroke: '#ffffff', // White outline for contrast
-            strokeThickness: 2
+            fontSize: '21px', // Reduced to 80% of 26px
+            color: '#ffffff', // White
+            stroke: '#000000', // Strong Black outline
+            strokeThickness: 4
         }).setOrigin(0.5);
         this.add(this.coordLabel);
 
@@ -73,16 +74,16 @@ export default class HexTile extends Phaser.GameObjects.Container {
 
         // Color based on owner
         let color = 0x888888; // Neutral
-        if (this.ownerID === 1) color = 0xffa500; // Orange
-        else if (this.ownerID === 2) color = 0xffff00; // Yellow
-        else if (this.ownerID === 3) color = 0x00ff00; // Green
-        else if (this.ownerID === 4) color = 0x0000ff; // Blue
-        else if (this.ownerID === 5) color = 0x800080; // Purple
-        else if (this.ownerID === 6) color = 0x8b4513; // Brown (Team 6)
+        if (this.ownerID === 1) color = 0xff8c00; // Orange (Darker)
+        else if (this.ownerID === 2) color = 0xffd700; // Yellow (Gold)
+        else if (this.ownerID === 3) color = 0x00c853; // Green (Vivid)
+        else if (this.ownerID === 4) color = 0x3399FF; // Blue (Brightened)
+        else if (this.ownerID === 5) color = 0xCC66FF; // Purple (Brightened)
+        else if (this.ownerID === 6) color = 0xD2B48C; // Brown (Tan/Light Brown)
         else if (this.ownerID === 9) color = 0xff0000; // Phonics (Bright Red)
 
         // Settings for Transparency
-        let alpha = 0.4; // Semi-transparent
+        let alpha = 0.8; // High visibility
         if (this.ownerID === 0) alpha = 0.2; // Neutrals more transparent
         if (this.ownerID === 9) alpha = 0.7; // Phonics darker
 
@@ -99,9 +100,14 @@ export default class HexTile extends Phaser.GameObjects.Container {
 
         this.graphics.strokePoints(points, true);
 
-        // Highlight Shield
         if (this.isShielded) {
             this.graphics.lineStyle(5, 0x00ffff, 1);
+            this.graphics.strokePoints(points, true);
+        }
+
+        // Highlight Selection (Thick White Border)
+        if (this.isSelected) {
+            this.graphics.lineStyle(6, 0xffffff, 1);
             this.graphics.strokePoints(points, true);
         }
 
@@ -131,6 +137,16 @@ export default class HexTile extends Phaser.GameObjects.Container {
 
     setPower(val) {
         this.power = val;
+        this.draw();
+    }
+
+    select() {
+        this.isSelected = true;
+        this.draw();
+    }
+
+    deselect() {
+        this.isSelected = false;
         this.draw();
     }
 }

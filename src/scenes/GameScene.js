@@ -23,9 +23,9 @@ export default class GameScene extends Phaser.Scene {
         this.scene.launch('UIScene');
 
         // Initialize Grid
-        // Reduced size for larger map (200 tiles) -> Updated to 40
+        // Reduced size for larger map (200 tiles) -> Updated to 42 (105% of 40)
         // Shifted further left to 0.30 to make room for UI
-        this.grid = new HexGrid(this, this.cameras.main.width * 0.30, this.cameras.main.height / 2, 40, 15, this.mapId);
+        this.grid = new HexGrid(this, this.cameras.main.width * 0.35, this.cameras.main.height / 2, 42, 15, this.mapId);
 
         // Initialize Managers
         this.gameManager = new GameManager(this, this.grid);
@@ -103,16 +103,11 @@ export default class GameScene extends Phaser.Scene {
     }
 
     selectTile(tile) {
-        // TODO: Add visual highlight
         if (this.selectedTile) {
-            this.selectedTile.graphics.clear();
-            this.selectedTile.draw();
+            this.selectedTile.deselect();
         }
         this.selectedTile = tile;
-        // Draw highlight (simple hack for now)
-        // Draw highlight (foggy fill)
-        tile.graphics.fillStyle(0xffffff, 0.3);
-        tile.graphics.fillPoints(tile.getHexPoints(), true);
+        this.selectedTile.select();
     }
 
     setupActionListeners() {
@@ -124,6 +119,11 @@ export default class GameScene extends Phaser.Scene {
         this.events.on('actionEndTurn', () => {
             this.gameManager.endTurn();
         });
+        this.events.on('actionAdminAP', (data) => this.actionAdminAP(data));
+
+        this.events.on('actionTogglePause', () => {
+            this.gameManager.togglePause();
+        });
 
         // Keyboard Shortcuts
         this.input.keyboard.on('keydown-Q', () => this.actionRecruit());
@@ -131,6 +131,9 @@ export default class GameScene extends Phaser.Scene {
         this.input.keyboard.on('keydown-E', () => this.actionExpand());
         this.input.keyboard.on('keydown-R', () => this.actionPurify());
         this.input.keyboard.on('keydown-A', () => this.actionUndo());
+        this.input.keyboard.on('keydown-P', () => {
+            this.gameManager.togglePause();
+        });
         this.input.keyboard.on('keydown-SPACE', () => this.gameManager.endTurn());
     }
 
@@ -146,7 +149,7 @@ export default class GameScene extends Phaser.Scene {
         }
 
         const lastAction = this.actionHistory.pop();
-        const team = this.gameManager.getCurrentTeam();
+        let team = this.gameManager.getCurrentTeam(); // Use let as team might change
 
         // Restore State
         switch (lastAction.type) {
@@ -166,6 +169,11 @@ export default class GameScene extends Phaser.Scene {
                 lastAction.target.setPower(lastAction.prevPower);
                 lastAction.target.isShielded = lastAction.prevShield; // Restore Shield
                 lastAction.target.draw();
+
+                // Fix: Decrement Purify Count
+                if (team.purifyCount > 0) {
+                    team.purifyCount--;
+                }
                 break;
             case 'ATTACK':
                 lastAction.target.setOwner(lastAction.prevTargetOwner);
@@ -175,12 +183,102 @@ export default class GameScene extends Phaser.Scene {
                 lastAction.source.setPower(lastAction.prevSourcePower);
                 lastAction.source.setOwner(lastAction.prevSourceOwner); // Should be same team usually
                 break;
+            case 'TURN_CHANGE':
+                console.log("Undoing Turn Change...");
+                // 1. Revert Turn/Round
+                this.gameManager.currentTurn = lastAction.prevTurn;
+                this.gameManager.currentRound = lastAction.prevRound;
+
+                // 2. Remove Income from the team that JUST started (lastAction.newTurn)
+                const incomeReceiver = this.gameManager.teamData[lastAction.newTurn];
+                if (incomeReceiver) {
+                    incomeReceiver.ap -= lastAction.income;
+                    console.log(`Removed ${lastAction.income} AP from Team ${incomeReceiver.id} (Undo Turn Start)`);
+                    // Revert Expansion Bonus Flag
+                    if (lastAction.expansionBonusGiven) {
+                        incomeReceiver.expansionDone = false;
+                    }
+                }
+
+                // 3. Refresh 'team' variable to point to CURRENT team (the one we reverted TO)
+                team = this.gameManager.getCurrentTeam();
+
+                // 4. Revert Tile Changes (Decay, Shield Expiry)
+                if (lastAction.changes && lastAction.changes.length > 0) {
+                    console.log(`Undoing ${lastAction.changes.length} tile changes (Decay/Shields)`);
+                    lastAction.changes.forEach(change => {
+                        change.tile.setPower(change.prevPower);
+                        change.tile.isShielded = change.prevShield;
+                        change.tile.draw();
+                    });
+                }
+
+                // 5. Revert Special Events (Phonics Invasion)
+                if (lastAction.specialEvent && lastAction.specialEvent.type === 'PHONICS_SPAWN') {
+                    console.log("Reverting Phonics Invasion...");
+                    const event = lastAction.specialEvent;
+
+                    // Revert Tiles (Remove Phonics, Restore Owner/Power/Shield)
+                    event.changes.forEach(change => {
+                        change.tile.setOwner(change.prevOwner);
+                        change.tile.setPower(change.prevPower);
+                        change.tile.isShielded = change.prevShield;
+                        change.tile.isPermanentShield = change.prevPermShield;
+                        change.tile.draw();
+                    });
+
+                    // Revert Compensation
+                    event.compensatedTeams.forEach(comp => {
+                        const teamData = this.gameManager.teamData[comp.teamId];
+                        if (teamData) {
+                            teamData.ap -= comp.amount;
+                            console.log(`Reverted Compensation: ${teamData.name} lost ${comp.amount} AP`);
+                        }
+                    });
+
+                    this.gameManager.isPart2 = false; // Reset Invasion Flag
+                }
+
+                this.gameManager.resetTurnTimer();
+                this.events.emit('updateUI');
+                console.log("Turn Change Undone");
+                return; // Early return as we handled AP/Update inside
+
+            case 'ADMIN_AP_CHANGE':
+                const targetTeam = this.gameManager.teamData[lastAction.teamId];
+                if (targetTeam) {
+                    targetTeam.ap -= lastAction.amount;
+                    console.log(`Undo Admin AP: ${targetTeam.name} ${lastAction.amount > 0 ? '-' : '+'}${Math.abs(lastAction.amount)} AP`);
+                }
+                this.events.emit('updateUI');
+                return; // Early return
         }
 
-        // Refund AP
-        team.ap += lastAction.cost;
+        // Refund AP (for normal actions)
+        if (team) {
+            team.ap += lastAction.cost;
+        }
         this.events.emit('updateUI');
         console.log("Undo Successful");
+    }
+
+    actionAdminAP(data) {
+        // data: { teamId, amount }
+        const team = this.gameManager.teamData[data.teamId];
+        if (!team) return;
+
+        team.ap += data.amount;
+        console.log(`Admin AP Change: ${team.name} ${data.amount > 0 ? '+' : ''}${data.amount} AP`);
+
+        // Push History
+        this.pushAction({
+            type: 'ADMIN_AP_CHANGE',
+            teamId: data.teamId,
+            amount: data.amount
+        });
+
+        this.events.emit('updateUI');
+        this.events.emit('showToast', `${team.name}: ${data.amount > 0 ? '+' : ''}${data.amount} Pt 적용 완료`);
     }
 
     handleInput(tile) {
@@ -239,9 +337,9 @@ export default class GameScene extends Phaser.Scene {
     }
 
     tryPurify(target, team) {
-        // Invincibility Check (Round 16)
-        if (this.gameManager.currentRound === 12) {
-            this.events.emit('showToast', "12라운드에는 포닉스가 무적입니다!");
+        // Invincibility Check (Round 9)
+        if (this.gameManager.currentRound === 9) {
+            this.events.emit('showToast', "9라운드에는 포닉스가 무적입니다!");
             return;
         }
 
@@ -291,7 +389,7 @@ export default class GameScene extends Phaser.Scene {
 
         this.events.emit('showToast', "정화 성공!");
         this.events.emit('updateUI');
-        this.gameManager.resetTurnTimer();
+        this.gameManager.addTime(5);
     }
 
     actionExpand() {
@@ -342,7 +440,7 @@ export default class GameScene extends Phaser.Scene {
 
         team.ap -= 3;
         this.events.emit('updateUI');
-        this.gameManager.resetTurnTimer();
+        this.gameManager.addTime(5);
     }
 
     actionRecruit() {
@@ -374,7 +472,7 @@ export default class GameScene extends Phaser.Scene {
         this.selectedTile.setPower(this.selectedTile.power + 1);
         team.ap -= 1;
         this.events.emit('updateUI');
-        this.gameManager.resetTurnTimer();
+        this.gameManager.addTime(5);
     }
 
     actionFortify() {
@@ -405,13 +503,13 @@ export default class GameScene extends Phaser.Scene {
         this.selectedTile.draw();
         team.ap -= 2;
         this.events.emit('updateUI');
-        this.gameManager.resetTurnTimer();
+        this.gameManager.addTime(5);
     }
 
     tryAttack(target, team) {
-        // Check if Phonics and Round 16
-        if (target.ownerID === 9 && this.gameManager.currentRound === 12) {
-            this.events.emit('showToast', "12라운드에는 포닉스가 무적입니다!");
+        // Check if Phonics and Round 9
+        if (target.ownerID === 9 && this.gameManager.currentRound === 9) {
+            this.events.emit('showToast', "9라운드에는 포닉스가 무적입니다!");
             return;
         }
 
@@ -475,7 +573,7 @@ export default class GameScene extends Phaser.Scene {
         }
 
         this.events.emit('updateUI');
-        this.gameManager.resetTurnTimer();
+        this.gameManager.addTime(5);
     }
 
     update() {

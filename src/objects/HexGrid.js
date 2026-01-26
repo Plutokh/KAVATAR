@@ -129,20 +129,38 @@ export default class HexGrid {
         }
 
         // Define Special Landmarks
-        const landmarks = [
+        // 1. Original Q,R Landmarks (Preserved)
+        const landmarksQR = [
             { q: -1, r: 2, name: '창의학습관' },
             { q: -3, r: 4, name: '오리연못' },
             { q: -6, r: 6, name: '응용공학동' },
             { q: -2, r: -1, name: '카이마루' },
             { q: 1, r: 1, name: '스컴' },
-            { q: -6, r: 3, name: '어은동산' },
-            { q: 4, r: 3, name: '대운동장' }
+            { q: -6, r: 3, name: '어은동산' }
+            // '대운동장' removed from here (was q:4, r:3)
         ];
 
-        landmarks.forEach(lm => {
+        landmarksQR.forEach(lm => {
             const tile = this.getTile(lm.q, lm.r);
-            if (tile) {
-                tile.setSpecial(lm.name);
+            if (tile) tile.setSpecial(lm.name);
+        });
+
+        // 2. New ID-based Landmarks (Requested)
+        const landmarksID = [
+            { id: 127, name: '대운동장' }, // Moved to 127
+            { id: 5, name: '북측 연구소' },
+            { id: 70, name: '미르나래관' },
+            { id: 150, name: '나노종합기술원' },
+            { id: 69, name: '서문' }
+        ];
+
+        landmarksID.forEach(lm => {
+            // Find tile by index (Iterate since map uses string keys)
+            for (const tile of this.tiles.values()) {
+                if (tile.index === lm.id) {
+                    tile.setSpecial(lm.name);
+                    break;
+                }
             }
         });
 

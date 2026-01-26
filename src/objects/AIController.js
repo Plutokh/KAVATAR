@@ -8,22 +8,43 @@ export default class AIController {
 
     runTurn(callback) {
         // AI Turn Logic
-        console.log(`AI Turn: Round ${this.scene.gameManager.currentRound}`);
+        console.log(`AIController.runTurn Start: Round ${this.scene.gameManager.currentRound}`);
 
-        // Coroutine-like behavior
-        // 1. Grow
-        this.growPhase();
+        // Safety: If scene is invalid, stop
+        if (!this.scene || !this.grid) {
+            console.error("AIController: Scene or Grid missing!");
+            return;
+        }
 
-        this.forceTimer(500, () => {
-            if (!this.scene) return;
-            // 2. Infect
-            this.infectPhase();
+        try {
+            // Coroutine-like behavior
+            // 1. Grow
+            this.growPhase();
 
             this.forceTimer(500, () => {
                 if (!this.scene) return;
-                callback(); // End AI Turn
+
+                try {
+                    // 2. Infect
+                    const duration = this.infectPhase(); // Get duration
+
+                    // Wait for infections to finish + buffer
+                    this.forceTimer(duration + 500, () => {
+                        if (!this.scene) return;
+                        console.log("AI Turn Complete. Calling callback.");
+                        callback(); // End AI Turn
+                    });
+                } catch (err) {
+                    console.error("Error in AI Infect Phase:", err);
+                    // Force End Turn to prevent Softlock
+                    callback();
+                }
             });
-        });
+        } catch (err) {
+            console.error("Error in AI Grow Phase:", err);
+            // Force End Turn
+            callback();
+        }
     }
 
     growPhase() {
@@ -44,12 +65,14 @@ export default class AIController {
         for (let tile of tiles) {
             if (tile.ownerID === 9 && tile.power >= 4) {
                 const neighbors = this.grid.getNeighbors(tile);
+                if (!neighbors) continue; // Safety check
+
                 let candidates = [];
                 let minPower = 999;
 
                 // 1. Find min power
                 for (let n of neighbors) {
-                    if (n.ownerID !== 9 && n.power < tile.power) {
+                    if (n && n.ownerID !== 9 && n.power < tile.power) { // Verify n exists
                         if (n.power < minPower) {
                             minPower = n.power;
                             candidates = [n]; // Reset with new min
@@ -57,6 +80,12 @@ export default class AIController {
                             candidates.push(n); // Add to tie
                         }
                     }
+                }
+
+                // PRIORITY FIX: If any candidate is Gray (Neutral, ownerID === 0), prioritize them!
+                const neutralCandidates = candidates.filter(c => c.ownerID === 0);
+                if (neutralCandidates.length > 0) {
+                    candidates = neutralCandidates;
                 }
 
                 // 2. Random Selection from candidates
@@ -68,34 +97,44 @@ export default class AIController {
         }
 
         // Apply Infection with Visuals
+        if (toInfect.length === 0) return 0; // No infections, 0 duration
+
         toInfect.forEach((action, index) => {
             // Stagger animations slightly
             this.forceTimer(index * 200, () => {
                 if (!this.scene) return;
-                const { source, target } = action;
+                try {
+                    const { source, target } = action;
+                    if (!source || !target) return; // Paranoia check
 
-                // Visual Line
-                const graphics = this.scene.add.graphics();
-                graphics.lineStyle(4, 0xff0000, 1);
-                graphics.lineBetween(source.x, source.y, target.x, target.y);
+                    // Visual Line
+                    const graphics = this.scene.add.graphics();
+                    graphics.lineStyle(4, 0xff0000, 1);
+                    graphics.lineBetween(source.x, source.y, target.x, target.y);
 
-                // Tweet/Fade effect
-                const tween = this.scene.tweens.add({
-                    targets: graphics,
-                    alpha: 0,
-                    duration: 500,
-                    onComplete: () => {
-                        graphics.destroy();
-                    }
-                });
-                this.activeTweens.push(tween);
+                    // Tweet/Fade effect
+                    const tween = this.scene.tweens.add({
+                        targets: graphics,
+                        alpha: 0,
+                        duration: 500,
+                        onComplete: () => {
+                            graphics.destroy();
+                        }
+                    });
+                    this.activeTweens.push(tween);
 
-                // Logic Change
-                target.setOwner(9);
-                target.setPower(3);
-                target.draw();
+                    // Logic Change
+                    target.setOwner(9);
+                    target.setPower(3);
+                    target.draw();
+                } catch (e) {
+                    console.error("Error executing infection action:", e);
+                }
             });
         });
+
+        // Return total duration: (last index * 200) + basic buffer
+        return (toInfect.length * 200);
     }
 
     forceTimer(delay, callback) {
