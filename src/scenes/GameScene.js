@@ -135,6 +135,170 @@ export default class GameScene extends Phaser.Scene {
             this.gameManager.togglePause();
         });
         this.input.keyboard.on('keydown-SPACE', () => this.gameManager.endTurn());
+
+        // Skill Event
+        this.events.on('actionSkill', (idx) => this.actionSkill(idx));
+    }
+
+    actionSkill(skillIdx) {
+        const team = this.gameManager.getCurrentTeam();
+        if (!team) return;
+
+        // 1. Check Cooldown (Disabled)
+
+        // 2. Skill 6 (Index 5) Special Handling (Dice vs Vaccine)
+        if (skillIdx === 5 && !this.gameManager.isPart2) {
+            // Random Dice (Instant)
+            const bonus = Phaser.Math.Between(5, 10);
+            team.ap += bonus;
+            console.log(`Skill: Random Dice -> +${bonus} AP`);
+            this.events.emit('showToast', `랜덤 다이스! (+${bonus} Pt)`);
+            this.events.emit('updateUI');
+            return;
+        }
+
+        // 3. Enter Target Mode
+        this.purifyMode = false;
+        this.expandMode = false;
+        this.skillMode = { active: true, skillIdx: skillIdx };
+        this.gameManager.setTimerPaused(true); // Pause Timer for Target Selection
+
+        const skillNames = ['EMP 충격파', '퀀텀 점프', '방화벽', '장학금 탈취', '오버클럭', '백신 코드'];
+        this.events.emit('showToast', `${skillNames[skillIdx]}: 대상을 선택하세요.`);
+    }
+
+    executeSkill(target, skillIdx) {
+        const team = this.gameManager.getCurrentTeam();
+        let success = false;
+
+        switch (skillIdx) {
+            case 0: // EMP Blast: Target + Radius 1 -> Power -2 (Min 1)
+                // Affects ALL tiles in radius? Or just enemies? Request says "designated + surrounding". Usually implies all.
+                // Let's affect target + neighbors.
+                const empTargets = [target, ...this.grid.getNeighbors(target)];
+                empTargets.forEach(t => {
+                    if (t.power > 1 && !t.isShielded && t.ownerID !== team.id) {
+                        t.setPower(Math.max(1, t.power - 2));
+                        t.draw();
+                    }
+                });
+                success = true;
+                break;
+
+            case 1: // Quantum Jump: Empty (Gray) OR Weak Enemy (Power 1) -> Mine
+                if ((target.ownerID === 0 || (target.ownerID !== team.id && target.power === 1)) && !target.isShielded) {
+                    // Check if Special (Maybe allow Quantum on Special?) User said "Special ok".
+                    target.setOwner(team.id);
+                    target.setPower(1);
+                    target.draw();
+                    success = true;
+                } else {
+                    if (target.isShielded) {
+                        this.events.emit('showToast', "보호막이 있는 땅은 점령할 수 없습니다.");
+                    } else {
+                        this.events.emit('showToast', "비어있거나 약한 적(전투력 1)의 땅만 가능합니다.");
+                    }
+                }
+                break;
+
+            case 2: // Firewall: Own + Neighbors(Own) -> Shield
+                if (target.ownerID === team.id) {
+                    const fwTargets = [target, ...this.grid.getNeighbors(target).filter(n => n.ownerID === team.id)];
+                    fwTargets.forEach(t => {
+                        t.isShielded = true;
+                        t.draw();
+                    });
+                    success = true;
+                } else {
+                    this.events.emit('showToast', "내 땅을 선택해야 합니다.");
+                }
+                break;
+
+            case 3: // Scholarship: Own -> Neighbors(Enemy & Power < Target) -> Mine
+                if (target.ownerID === team.id) {
+                    const neighbors = this.grid.getNeighbors(target);
+                    let converted = false;
+                    neighbors.forEach(n => {
+                        // Scholarship Logic:
+                        // 1. Neutral: Requires My Power >= 2
+                        // 2. Enemy: Requires My Power > Enemy Power
+                        const isNeutral = n.ownerID === 0;
+                        const canCapture = isNeutral ? (target.power >= 2) : (n.power < target.power);
+
+                        if (n.ownerID !== team.id && !n.isShielded && canCapture) {
+                            n.setOwner(team.id);
+                            // Power remains same? Request says "Immediate Occupation". Usually keeps power or sets to 1.
+                            // Original request: "전투력이 관계 없이... 즉시 우리 팀으로 변경".
+                            // Modified request: "Own -> Weak Neighbors -> Mine".
+                            // I'll keep the power but change owner.
+                            n.setPower(1); // Set Power to 1 as requested
+                            n.draw();
+                            converted = true;
+                        }
+                    });
+                    if (converted) success = true;
+                    else this.events.emit('showToast', "주변에 흡수할 수 있는 약한 적(보호막 X)이 없습니다.");
+                } else {
+                    this.events.emit('showToast', "내 땅을 선택해야 합니다.");
+                }
+                break;
+
+            case 4: // Overclock: Own + Neighbors -> Power +3 (Max 5)
+                if (target.ownerID === team.id) {
+                    // Target
+                    target.setPower(Math.min(5, target.power + 3));
+                    target.draw();
+
+                    // Neighbors (Own Only)
+                    const ocNeighbors = this.grid.getNeighbors(target);
+                    ocNeighbors.forEach(n => {
+                        if (n.ownerID === team.id) {
+                            n.setPower(Math.min(5, n.power + 3));
+                            n.draw();
+                        }
+                    });
+                    success = true;
+                } else {
+                    this.events.emit('showToast', "내 땅을 선택해야 합니다.");
+                }
+                break;
+
+            case 5: // Vaccine Code: Target -> Neighbors(Ponix) -> Neutral
+                // Target center can be anything.
+                const vNeighbors = this.grid.getNeighbors(target);
+                let cleaned = false;
+                vNeighbors.forEach(n => {
+                    if (n.ownerID === 9 && !n.isShielded) { // Ponix
+                        n.setOwner(0);
+                        n.setPower(1);
+                        n.isShielded = false;
+                        n.draw();
+                        cleaned = true;
+                        team.purifyCount = (team.purifyCount || 0) + 1; // Increment Purify Count
+                    }
+                });
+                // Also check center? Request: "Target center... radius 1 Ponix".
+                if (target.ownerID === 9 && !target.isShielded) {
+                    target.setOwner(0);
+                    target.setPower(1);
+                    target.isShielded = false;
+                    target.draw();
+                    cleaned = true;
+                    team.purifyCount = (team.purifyCount || 0) + 1; // Increment Purify Count
+                }
+
+                if (cleaned) success = true;
+                else this.events.emit('showToast', "주변에 정화할 수 있는 포닉스가 없습니다 (또는 보호막).");
+                break;
+        }
+
+        if (success) {
+            this.skillMode = null; // Exit mode
+            this.gameManager.setTimerPaused(false); // Resume Timer
+            this.events.emit('updateUI');
+            this.gameManager.addTime(5); // Action time bonus
+            this.events.emit('showToast', "스킬 사용 성공!");
+        }
     }
 
     // --- UNDO SYSTEM ---
@@ -213,12 +377,12 @@ export default class GameScene extends Phaser.Scene {
                     });
                 }
 
-                // 5. Revert Special Events (Phonics Invasion)
-                if (lastAction.specialEvent && lastAction.specialEvent.type === 'PHONICS_SPAWN') {
-                    console.log("Reverting Phonics Invasion...");
+                // 5. Revert Special Events (Ponix Invasion)
+                if (lastAction.specialEvent && lastAction.specialEvent.type === 'PONIX_SPAWN') {
+                    console.log("Reverting Ponix Invasion...");
                     const event = lastAction.specialEvent;
 
-                    // Revert Tiles (Remove Phonics, Restore Owner/Power/Shield)
+                    // Revert Tiles (Remove Ponix, Restore Owner/Power/Shield)
                     event.changes.forEach(change => {
                         change.tile.setOwner(change.prevOwner);
                         change.tile.setPower(change.prevPower);
@@ -283,12 +447,25 @@ export default class GameScene extends Phaser.Scene {
 
     handleInput(tile) {
         if (!this.gameManager) return;
+
+        // Setup Phase Logic
+        if (this.gameManager.isSetupPhase) {
+            this.gameManager.handleSetupClick(tile);
+            return;
+        }
+
         const team = this.gameManager.getCurrentTeam();
         if (!team) return;
 
+        // Skill Mode Logic
+        if (this.skillMode && this.skillMode.active) {
+            this.executeSkill(tile, this.skillMode.skillIdx);
+            return;
+        }
+
         // Purify Mode Logic
         if (this.purifyMode) {
-            // Check if Target is Phonics (Owner 9) OR if it's a Special Tile occupied by Phonics (checking owner should suffice, but being explicit)
+            // Check if Target is Ponix (Owner 9) OR if it's a Special Tile occupied by Ponix (checking owner should suffice, but being explicit)
             if (tile.ownerID === 9) {
                 this.tryPurify(tile, team);
             } else {
@@ -325,6 +502,8 @@ export default class GameScene extends Phaser.Scene {
 
     actionPurify() {
         this.expandMode = false;
+        this.skillMode = null;
+        this.gameManager.setTimerPaused(false); // Resume if cancelled
         const team = this.gameManager.getCurrentTeam();
 
         if (team.ap < 1) { // Min check for UI feedback
@@ -394,6 +573,8 @@ export default class GameScene extends Phaser.Scene {
 
     actionExpand() {
         this.purifyMode = false;
+        this.skillMode = null;
+        this.gameManager.setTimerPaused(false); // Resume if cancelled
         const team = this.gameManager.getCurrentTeam();
 
         if (team.ap < 3) {
@@ -446,6 +627,8 @@ export default class GameScene extends Phaser.Scene {
     actionRecruit() {
         this.purifyMode = false; // Reset modes
         this.expandMode = false;
+        this.skillMode = null;
+        this.gameManager.setTimerPaused(false); // Resume if cancelled
         const team = this.gameManager.getCurrentTeam();
         if (!this.selectedTile || this.selectedTile.ownerID !== team.id) {
             console.log("No valid tile selected.");
@@ -478,6 +661,8 @@ export default class GameScene extends Phaser.Scene {
     actionFortify() {
         this.purifyMode = false; // Reset modes
         this.expandMode = false;
+        this.skillMode = null;
+        this.gameManager.setTimerPaused(false); // Resume if cancelled
         const team = this.gameManager.getCurrentTeam();
         if (!this.selectedTile || this.selectedTile.ownerID !== team.id) return;
 
@@ -507,7 +692,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     tryAttack(target, team) {
-        // Check if Phonics and Round 9
+        // Check if Ponix and Round 9
         if (target.ownerID === 9 && this.gameManager.currentRound === 9) {
             this.events.emit('showToast', "9라운드에는 포닉스가 무적입니다!");
             return;

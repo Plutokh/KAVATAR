@@ -80,12 +80,13 @@ export default class HexTile extends Phaser.GameObjects.Container {
         else if (this.ownerID === 4) color = 0x3399FF; // Blue (Brightened)
         else if (this.ownerID === 5) color = 0xCC66FF; // Purple (Brightened)
         else if (this.ownerID === 6) color = 0xD2B48C; // Brown (Tan/Light Brown)
-        else if (this.ownerID === 9) color = 0xff0000; // Phonics (Bright Red)
+        else if (this.ownerID === 6) color = 0xD2B48C; // Brown (Tan/Light Brown)
+        else if (this.ownerID === 9) color = 0xff0000; // Ponix (Bright Red)
 
         // Settings for Transparency
         let alpha = 0.8; // High visibility
         if (this.ownerID === 0) alpha = 0.2; // Neutrals more transparent
-        if (this.ownerID === 9) alpha = 0.7; // Phonics darker
+        if (this.ownerID === 9) alpha = 0.7; // Ponix darker
 
         // Fill
         this.graphics.fillStyle(color, alpha);
@@ -93,7 +94,7 @@ export default class HexTile extends Phaser.GameObjects.Container {
 
         // Stroke
         this.graphics.lineStyle(2, 0xffffff, 1);
-        if (this.ownerID === 9) this.graphics.lineStyle(4, 0xff0000, 1); // Phonics glow
+        if (this.ownerID === 9) this.graphics.lineStyle(4, 0xff0000, 1); // Ponix glow
 
         // Special Tile Gold Border
         if (this.isSpecial) this.graphics.lineStyle(4, 0xffd700, 1); // Gold

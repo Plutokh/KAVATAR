@@ -60,63 +60,81 @@ export default class AIController {
     infectPhase() {
         const toInfect = [];
         const tiles = this.grid.getAllTiles();
+        const validSources = [];
 
-        // Snapshot logic
+        // 1. Gather Valid Ponix Sources
         for (let tile of tiles) {
             if (tile.ownerID === 9 && tile.power >= 4) {
-                const neighbors = this.grid.getNeighbors(tile);
-                if (!neighbors) continue; // Safety check
-
-                let candidates = [];
-                let minPower = 999;
-
-                // 1. Find min power
-                for (let n of neighbors) {
-                    if (n && n.ownerID !== 9 && n.power < tile.power) { // Verify n exists
-                        if (n.power < minPower) {
-                            minPower = n.power;
-                            candidates = [n]; // Reset with new min
-                        } else if (n.power === minPower) {
-                            candidates.push(n); // Add to tie
-                        }
-                    }
-                }
-
-                // PRIORITY FIX: If any candidate is Gray (Neutral, ownerID === 0), prioritize them!
-                const neutralCandidates = candidates.filter(c => c.ownerID === 0);
-                if (neutralCandidates.length > 0) {
-                    candidates = neutralCandidates;
-                }
-
-                // 2. Random Selection from candidates
-                if (candidates.length > 0) {
-                    const bestTarget = candidates[Math.floor(Math.random() * candidates.length)];
-                    toInfect.push({ source: tile, target: bestTarget });
-                }
+                validSources.push(tile);
             }
         }
 
-        // Apply Infection with Visuals
-        if (toInfect.length === 0) return 0; // No infections, 0 duration
+        // 2. Sort Sources by Index (Ascending) for Deterministic Order
+        validSources.sort((a, b) => a.index - b.index);
+
+        // 3. Select Targets (Prevention of Overlap)
+        const claimedTargets = new Set(); // Track tiles targeted in this turn
+
+        for (let tile of validSources) {
+            const neighbors = this.grid.getNeighbors(tile);
+            if (!neighbors) continue;
+
+            let candidates = [];
+            let minPower = 999;
+
+            // Find min power among valid neighbors
+            for (let n of neighbors) {
+                // Check: Valid neighbor, Not Ponix, Weaker, Not Shielded, AND Not already claimed
+                if (n && n.ownerID !== 9 && n.power < tile.power && !n.isShielded && !claimedTargets.has(n)) {
+                    if (n.power < minPower) {
+                        minPower = n.power;
+                        candidates = [n]; // Reset with new min
+                    } else if (n.power === minPower) {
+                        candidates.push(n); // Add to tie
+                    }
+                }
+            }
+
+            // Priority: Neutral (Gray)
+            const neutralCandidates = candidates.filter(c => c.ownerID === 0);
+            if (neutralCandidates.length > 0) {
+                candidates = neutralCandidates;
+            }
+
+            // Select Target
+            if (candidates.length > 0) {
+                // Random selection from best candidates
+                const bestTarget = candidates[Math.floor(Math.random() * candidates.length)];
+
+                toInfect.push({ source: tile, target: bestTarget });
+                claimedTargets.add(bestTarget); // Mark as claimed for subsequent units
+            }
+        }
+
+        // 4. Apply Infection with Visuals
+        if (toInfect.length === 0) return 0;
 
         toInfect.forEach((action, index) => {
-            // Stagger animations slightly
-            this.forceTimer(index * 200, () => {
+            // Speed up: 0.1s (100ms) interval
+            this.forceTimer(index * 100, () => {
                 if (!this.scene) return;
                 try {
                     const { source, target } = action;
-                    if (!source || !target) return; // Paranoia check
+                    if (!source || !target) return;
+
+                    // Double check (redundant but safe): Ensure target wasn't converted by a FASTER event in edge cases
+                    // But since we are sequential, it should be fine.
 
                     // Visual Line
                     const graphics = this.scene.add.graphics();
                     graphics.lineStyle(4, 0xff0000, 1);
                     graphics.lineBetween(source.x, source.y, target.x, target.y);
 
-                    // Tweet/Fade effect
+                    // Fade out
                     const tween = this.scene.tweens.add({
                         targets: graphics,
                         alpha: 0,
-                        duration: 500,
+                        duration: 300, // Faster fade
                         onComplete: () => {
                             graphics.destroy();
                         }
@@ -133,8 +151,8 @@ export default class AIController {
             });
         });
 
-        // Return total duration: (last index * 200) + basic buffer
-        return (toInfect.length * 200);
+        // Return total duration: (count * 100) + buffer
+        return (toInfect.length * 100);
     }
 
     forceTimer(delay, callback) {
@@ -143,7 +161,7 @@ export default class AIController {
         this.timers.push(timer);
     }
 
-    spawnInitialPhonics() {
+    spawnInitialPonix() {
         // Deprecated: Logic moved to GameManager.triggerPart2 to target Landmarks.
         // Keeping empty method if called from elsewhere to prevent crash, or removing listener.
     }

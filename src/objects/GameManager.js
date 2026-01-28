@@ -36,84 +36,69 @@ export default class GameManager {
             if (!this.teamData[i]) continue;
             this.teamData[i].purifyCount = 0; // Initialize Purify Count
             this.teamData[i].expansionDone = false; // Initialize Bonus Flag
+            this.teamData[i].cooldowns = [0, 0, 0, 0, 0, 0]; // Initialize Cooldowns
             if (i <= 2) this.teamData[i].ap = 9;
             else if (i <= 4) this.teamData[i].ap = 10;
             else this.teamData[i].ap = 11;
         }
 
-        this.spreadHQ();
-        // Initial UI Update to show all APs before turn starts
-        this.scene.events.emit('updateUI');
+        // Skill Roulette Counters (Indices: 0-5)
+        this.skillRouletteCounts = [0, 0, 0, 0, 0, 0];
 
-        this.startTurn();
+        // Initialize Setup Phase
+        this.isSetupPhase = true;
+        this.setupTurn = 1;
+        this.currentTurn = 1; // Sync for UI
+
+        // Initial UI Update
+        this.scene.events.emit('updateUI');
+        this.scene.events.emit('showToast', `${this.teamData[1].name}: 시작 위치를 선택하세요.`);
     }
 
-    spreadHQ() {
-        if (this.mapId === 2) {
-            // Map 2: Specific Indices for HQs
-            const hqIndices = [2, 28, 91, 108, 82, 19]; // Teams 1-6
-            const allTiles = this.grid.getAllTiles();
+    handleSetupClick(tile) {
+        if (!this.isSetupPhase) return;
 
-            hqIndices.forEach((idx, i) => {
-                const tile = allTiles.find(t => t.index === idx);
-                if (tile) {
-                    tile.setOwner(i + 1); // Team ID 1-6
-                    tile.setPower(1);
-                    tile.isPermanentShield = true;
-                    tile.isShielded = true;
-                    tile.draw();
-                } else {
-                    console.warn(`HQ Index ${idx} not found for Map 2`);
+        // 1. Check if occupied
+        if (tile.ownerID !== 0) {
+            this.scene.events.emit('showToast', "이미 점령된 타일입니다.");
+            return;
+        }
+
+        // 2. Check Distance from ANY Special Tile (>= 2)
+        // Distance < 2 means: 0 (itself) or 1 (adjacent)
+        const allTiles = this.grid.getAllTiles();
+        for (const t of allTiles) {
+            if (t.isSpecial) {
+                const dist = this.grid.getDistance(tile, t);
+                if (dist < 2) {
+                    this.scene.events.emit('showToast', "특수 타일과 인접할 수 없습니다 (2칸 이상 거리 필요).");
+                    return;
                 }
-            });
-            return; // Done for Map 2
+            }
         }
 
-        let startingPositions = [];
+        // 3. Confirm Selection
+        const teamId = this.setupTurn;
+        tile.setOwner(teamId);
+        tile.setPower(1);
+        tile.isPermanentShield = true;
+        tile.isShielded = true;
+        tile.draw();
 
-        if (this.mapId === 3) {
-            // Map 3: Hexagon Corners (Radius 6)
-            startingPositions = [
-                { q: 0, r: -6, id: 1 },
-                { q: 6, r: -6, id: 2 },
-                { q: 6, r: 0, id: 3 },
-                { q: 0, r: 6, id: 4 },
-                { q: -6, r: 6, id: 5 },
-                { q: -6, r: 0, id: 6 }
-            ];
+        console.log(`Team ${teamId} chose Start: ${tile.q},${tile.r}`);
+
+        // 4. Next Team or Start Game
+        this.setupTurn++;
+        if (this.setupTurn > this.teams) {
+            this.isSetupPhase = false;
+            this.scene.events.emit('showToast', "게임 시작!");
+            this.currentTurn = 1; // Reset to Team 1
+            this.startTurn();
         } else {
-            // Map 1: Original + Team 6 at Index 17
-            startingPositions = [
-                { q: -3, r: -2, id: 1 }, // Orange (NW)
-                { q: 5, r: -1, id: 2 },  // Yellow (E)
-                { q: 1, r: 5, id: 3 },   // Green (Now SE) -> Was Blue
-                { q: -9, r: 7, id: 4 },  // Blue (Now SW) -> Was Green
-                { q: -2, r: 1, id: 5 }   // Purple (Center/West)
-            ];
-
-            // Manually add Team 6 at Index 17 for Map 1
-            const allTiles = this.grid.getAllTiles();
-            const tile17 = allTiles.find(t => t.index === 17);
-            if (tile17) {
-                // Determine Q, R for consistency or just set directly
-                startingPositions.push({ q: tile17.q, r: tile17.r, id: 6 });
-            }
+            this.currentTurn = this.setupTurn; // Update for UI
+            this.scene.events.emit('updateUI');
+            this.scene.events.emit('showToast', `${this.teamData[this.setupTurn].name}: 시작 위치를 선택하세요.`);
         }
-
-        startingPositions.forEach(pos => {
-            const tile = this.grid.getTile(pos.q, pos.r);
-            if (tile) {
-                tile.setOwner(pos.id);
-                tile.setPower(1);
-
-                // Permanent Shield for HQs
-                tile.isPermanentShield = true;
-                tile.isShielded = true;
-                tile.draw(); // Visual update
-            } else {
-                console.warn(`HQ Position not found: ${pos.q}, ${pos.r}`);
-            }
-        });
     }
 
 
@@ -130,17 +115,22 @@ export default class GameManager {
         }
     }
 
-    resetTurnTimer() {
-        // Base time depends on Round
-        if (this.currentRound <= 3) {
-            this.timeLeft = 30;
-        } else if (this.currentRound <= 6) {
-            this.timeLeft = 40;
-        } else if (this.currentRound <= 9) {
-            this.timeLeft = 50;
+    setTimerPaused(isPaused) {
+        if (this.isPaused === isPaused) return; // No change
+        this.isPaused = isPaused;
+        console.log(`Game Timer Paused: ${this.isPaused}`);
+        this.scene.events.emit('updateUI');
+
+        if (this.isPaused) {
+            if (this.timerEvent) this.timerEvent.paused = true;
         } else {
-            this.timeLeft = 60;
+            if (this.timerEvent) this.timerEvent.paused = false;
         }
+    }
+
+    resetTurnTimer() {
+        // Base time is 50 seconds for ALL rounds as requested
+        this.timeLeft = 50;
 
         this.isPaused = false; // Reset pause on new turn
         if (this.timerEvent) this.timerEvent.remove();
@@ -163,6 +153,9 @@ export default class GameManager {
 
     addTime(seconds) {
         this.timeLeft += seconds;
+        if (this.timeLeft > 60) {
+            this.timeLeft = 60;
+        }
         console.log(`Time Added: +${seconds}s. New Time: ${this.timeLeft}s`);
         this.scene.events.emit('updateUI');
         this.scene.events.emit('showToast', `시간 추가! (+${seconds}초)`);
@@ -171,6 +164,13 @@ export default class GameManager {
     startTurn(prevTurn = null, prevRound = null, specialEvent = null) {
         if (this.currentTurn === 9) {
             // AI Turn
+            // Ponix Maintenance: Clear Shields (if any)
+            for (let tile of this.grid.getAllTiles()) {
+                if (tile.ownerID === 9 && tile.isShielded && !tile.isPermanentShield) {
+                    tile.isShielded = false;
+                    tile.draw();
+                }
+            }
             this.scene.events.emit('aiTurnStart');
         } else {
             // Team Turn
@@ -240,7 +240,7 @@ export default class GameManager {
                     income: income + expansionBonus, // Store TOTAL income to deduct on undo
                     expansionBonusGiven: (expansionBonus > 0), // Flag to revert status
                     changes: changes, // Unified changes array
-                    specialEvent: specialEvent // Store Special Event (like Phonics Spawn)
+                    specialEvent: specialEvent // Store Special Event (like Ponix Spawn)
                 });
             }
 
@@ -263,6 +263,15 @@ export default class GameManager {
         }
         const territoryBonus = Math.floor(tileCount / 4);
         return 4 + territoryBonus + specialBonus;
+    }
+
+    checkCooldown(teamId, skillIdx) {
+        // Cooldowns Disabled
+        return true;
+    }
+
+    startCooldown(teamId, skillIdx) {
+        // Cooldowns Disabled
     }
 
     calcAP(teamId) {
@@ -321,7 +330,7 @@ export default class GameManager {
             this.currentTurn = 1;
         }
 
-        // Check Phonics event
+        // Check Ponix event
         if (this.currentRound === 9 && !this.isPart2) {
             specialEvent = this.triggerPart2();
         }
@@ -340,26 +349,47 @@ export default class GameManager {
 
         // Part 2 Win/Loss
         if (this.isPart2) {
-            let phonicsCount = 0;
+            let ponixCount = 0;
             let totalTiles = 0;
+            const counts = {}; // Track land counts for players
+
             const tiles = this.grid.getAllTiles();
             for (let tile of tiles) {
                 totalTiles++;
-                if (tile.ownerID === 9) phonicsCount++;
+                if (tile.ownerID === 9) {
+                    ponixCount++;
+                } else if (tile.ownerID >= 1 && tile.ownerID <= 6) {
+                    counts[tile.ownerID] = (counts[tile.ownerID] || 0) + 1;
+                }
             }
 
-            // Condition A: Phonics eliminated (AFTER Round 9)
-            // Round 9 is spawn/invincible round, so don't win immediately if count is 0 (shouldn't be though)
-            if (this.currentRound > 9 && phonicsCount === 0) {
-                this.scene.events.emit('showToast', "승리! 포닉스를 모두 물리쳤습니다!");
-                this.scene.scene.pause();
+            // Condition A: Ponix eliminated (AFTER Round 9)
+            if (this.currentRound > 9 && ponixCount === 0) {
+                // Find MVP (Most Tiles)
+                let maxTiles = -1;
+                let winnerId = 1;
+                for (let id = 1; id <= 6; id++) {
+                    const c = counts[id] || 0;
+                    if (c > maxTiles) {
+                        maxTiles = c;
+                        winnerId = id;
+                    }
+                }
+                const winningTeam = this.teamData[winnerId].name;
+
+                this.scene.events.emit('gameOver', {
+                    winner: 'Player',
+                    winningTeam: winningTeam
+                });
                 return;
             }
 
-            // Condition B: Phonics > 50%
-            if (phonicsCount / totalTiles >= 0.5) {
-                this.scene.events.emit('showToast', "패배! 포닉스가 맵의 50% 이상을 점령했습니다!");
-                this.scene.scene.pause();
+            // Condition B: Ponix > 50%
+            if (ponixCount / totalTiles >= 0.5) {
+                this.scene.events.emit('gameOver', {
+                    winner: 'Ponix',
+                    winningTeam: '포닉스'
+                });
                 return;
             }
         }
@@ -385,7 +415,7 @@ export default class GameManager {
         this.scene.events.emit('part2Started'); // UI Popup if needed
         this.scene.events.emit('showToast', "경고: 포닉스의 침공이 시작되었습니다! (주요 건물 감염)");
 
-        // Spawn Phonics at Landmarks
+        // Spawn Ponix at Landmarks
         const tiles = this.grid.getAllTiles();
         let compensationGiven = false;
 
@@ -420,9 +450,9 @@ export default class GameManager {
                     prevPermShield: prevPermShield
                 });
 
-                tile.setOwner(9); // Phonics
+                tile.setOwner(9); // Ponix
                 tile.setPower(3); // Reduced from 6 to 3
-                tile.isShielded = true; // Initial Shield
+                tile.isShielded = true; // Initial Shield Restored
                 tile.isPermanentShield = false; // Ensure it expires
                 tile.draw();
             }
@@ -434,7 +464,7 @@ export default class GameManager {
         }
 
         return {
-            type: 'PHONICS_SPAWN',
+            type: 'PONIX_SPAWN',
             changes: changes,
             compensatedTeams: compensatedTeams
         };
