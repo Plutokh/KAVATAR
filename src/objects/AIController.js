@@ -50,7 +50,7 @@ export default class AIController {
     growPhase() {
         for (let tile of this.grid.getAllTiles()) {
             if (tile.ownerID === 9) {
-                if (tile.power < 6) {
+                if (tile.power < 5) {
                     tile.setPower(tile.power + 1);
                 }
             }
