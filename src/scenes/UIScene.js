@@ -92,7 +92,7 @@ export default class UIScene extends Phaser.Scene {
         // P (Purify): 1850 (Center) - no change
         const col1 = 1415;
         const col2 = 1615;
-        const col3 = 1790;
+        const col3 = 1780;
         const col4 = 1850;
 
         // Headers (Hidden)
