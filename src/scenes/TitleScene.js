@@ -3,7 +3,9 @@ export default class TitleScene extends Phaser.Scene {
         super('TitleScene');
     }
 
-    create() {
+    async create() {
+        await document.fonts.load('60px "Ghanachocolate"');
+
         // Defensive Cleanup
         if (this.scene.get('GameScene').sys.isActive()) this.scene.stop('GameScene');
         if (this.scene.get('UIScene').sys.isActive()) this.scene.stop('UIScene');
@@ -26,18 +28,18 @@ export default class TitleScene extends Phaser.Scene {
             color: '#deb989',
             stroke: '#3E2723',
             strokeThickness: 4,
-            padding: { x: 30, y: 15 }
-        }).setOrigin(0.5).setInteractive().setScale(1.5); // 150% size
+            padding: {x: 30, y: 15}
+        }).setOrigin(0.5).setInteractive().setScale(1.0); // 150% size
 
         // Hover effect
         startBtn.on('pointerover', () => {
-            startBtn.setStyle({ color: '#FFD700' }); // Gold on hover (preserves fontFamily)
-            startBtn.setScale(1.65); // 1.5 base * 1.1 hover
+            startBtn.setStyle({color: '#a8875b'}); // Gold on hover (preserves fontFamily)
+            startBtn.setScale(1.0); // 1.5 base * 1.1 hover
         });
 
         startBtn.on('pointerout', () => {
-            startBtn.setStyle({ color: '#deb989' }); // Beige default (preserves fontFamily)
-            startBtn.setScale(1.5); // Back to 150% base
+            startBtn.setStyle({color: '#deb989'}); // Beige default (preserves fontFamily)
+            startBtn.setScale(1.0); // Back to 150% base
         });
 
         // Start game on click (default to Map 1: KAIST)
