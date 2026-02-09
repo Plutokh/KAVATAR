@@ -63,6 +63,13 @@ export default class HexTile extends Phaser.GameObjects.Container {
         }).setOrigin(0.5).setVisible(false); // Default Hidden
         this.add(this.coordText);
 
+        // Index Label (Visible tile number)
+        this.indexText = scene.add.text(0, 28, `${index}`, {
+            fontFamily: 'Arial', fontSize: '21px', color: '#FFFFFF',
+            stroke: '#000000', strokeThickness: 3, fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.add(this.indexText);
+
         this.updateVisuals();
 
         // Interaction
