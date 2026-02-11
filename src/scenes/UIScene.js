@@ -880,7 +880,7 @@ export default class UIScene extends Phaser.Scene {
             '#f4cd18', // 2 Yellow
             '#86eb03', // 3 Green
             '#3fbaee', // 4 Blue (Brightened from #0000FF)
-            '#c36afc', // 5 Purple (Brightened from #800080)
+            '#af87ff', // 5 Purple (Brightened from #800080)
             '#ff86de', // 6 Pink (Updated from Brown)
             '#888888',
             '#888888',

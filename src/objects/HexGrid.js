@@ -10,6 +10,11 @@ export default class HexGrid {
         this.mapId = mapId;
         this.tiles = new Map(); // key: "q,r", value: HexTile
 
+        // Cache mathematical constants for performance
+        this.SQRT3 = Math.sqrt(3);
+        this.HALF_SQRT3 = this.SQRT3 / 2;
+        this.HEX_HEIGHT_MULTIPLIER = 1.5;
+
         this.generateMap();
     }
 

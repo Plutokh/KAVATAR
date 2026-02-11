@@ -56,10 +56,6 @@ export default class HexTile extends Phaser.GameObjects.Container {
         this.specialBorder = scene.add.graphics();
         this.add(this.specialBorder);
 
-        // Team Highlight Border (e.g., for Purple Team)
-        this.teamBorder = scene.add.graphics();
-        this.add(this.teamBorder);
-
         // Coordinate Label (Debug or Small) - Keeping minimal or removing?
         // User request didn't mention it, but usually good for debug.
         // Making it very subtle or hidden.
@@ -70,8 +66,8 @@ export default class HexTile extends Phaser.GameObjects.Container {
 
         // Index Label (Visible tile number)
         this.indexText = scene.add.text(0, 28, `${index}`, {
-            fontFamily: 'Arial', fontSize: '21px', color: '#FFFFFF',
-            stroke: '#000000', strokeThickness: 3, fontStyle: 'bold'
+            fontFamily: 'Pretendard', fontSize: '21px', color: '#ffffff',
+            stroke: '#201006', strokeThickness: 3, fontStyle: '600'
         }).setOrigin(0.5);
         this.add(this.indexText);
 
@@ -153,48 +149,10 @@ export default class HexTile extends Phaser.GameObjects.Container {
             this.baseSprite.setTint(0x00FF00); // Green Tint
         }
 
-        // Team Highlight Border (Purple Team - ID 5)
-        if (this.teamBorder) this.teamBorder.clear(); // Safety check if called before init, though unlikely
-
-        // Custom Tint for Purple (Owner 5) to distinguish from Pink
-        if (this.ownerID === 5) {
-            // Darken Tint
-            // If Kingdom or Shielded, use Lighter Tint for visibility (User Request)
-            if (this.isPermanentShield || this.isShielded) {
-                this.baseSprite.setTint(0xCCCCCC); // Lighter for Castle/Shield
-            } else {
-                this.baseSprite.setTint(0x888888); // Darker tint for normal land
-            }
-
-            // Draw Bright Border
-            if (this.teamBorder) {
-                const points = [
-                    { x: 0, y: -39 },
-                    { x: 34, y: -20 },
-                    { x: 34, y: 20 },
-                    { x: 0, y: 39 },
-                    { x: -34, y: 20 },
-                    { x: -34, y: -20 }
-                ];
-
-                this.teamBorder.lineStyle(2, 0xD080FF, 1.0); // Bright Purple Stroke
-                this.teamBorder.beginPath();
-                this.teamBorder.moveTo(points[0].x, points[0].y);
-                for (let i = 1; i < points.length; i++) {
-                    this.teamBorder.lineTo(points[i].x, points[i].y);
-                }
-                this.teamBorder.closePath();
-                this.teamBorder.strokePath();
-                this.teamBorder.setDepth(1.6); // Above special border?
-            }
-
+        if (this.ownerID === 0 && this.isStartCandidate) {
+            // Do nothing, keep green tint
         } else {
-            // Only clear tint if NOT a start candidate (otherwise we lose the green highlight)
-            if (this.ownerID === 0 && this.isStartCandidate) {
-                // Do nothing, keep green tint
-            } else {
-                this.baseSprite.clearTint();
-            }
+            this.baseSprite.clearTint();
         }
 
         // Crown
