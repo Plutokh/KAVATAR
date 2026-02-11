@@ -189,6 +189,13 @@ export default class GameScene extends Phaser.Scene {
             const bonus = Phaser.Math.Between(5, 10);
             team.ap += bonus;
             console.log(`Skill: Random Dice -> +${bonus} AP`);
+
+            // Push History
+            this.pushAction({
+                type: 'SKILL_DICE',
+                bonus: bonus
+            });
+
             this.events.emit('showToast', `랜덤 다이스! (+${bonus} Pt)`);
             this.events.emit('updateUI');
             return;
@@ -207,14 +214,20 @@ export default class GameScene extends Phaser.Scene {
     executeSkill(target, skillIdx) {
         const team = this.gameManager.getCurrentTeam();
         let success = false;
+        const changes = []; // Track changes for Undo
+        let purifyCountBonus = 0; // Track purify count bonus for Undo
 
         switch (skillIdx) {
             case 0: // EMP Blast: Target + Radius 1 -> Power -2 (Min 1)
-                // Affects ALL tiles in radius? Or just enemies? Request says "designated + surrounding". Usually implies all.
-                // Let's affect target + neighbors.
                 const empTargets = [target, ...this.grid.getNeighbors(target)];
                 empTargets.forEach(t => {
                     if (t.power > 1 && !t.isShielded && t.ownerID !== team.id) {
+                        changes.push({
+                            tile: t,
+                            prevPower: t.power,
+                            prevOwner: t.ownerID,
+                            prevShield: t.isShielded
+                        });
                         t.setPower(Math.max(1, t.power - 2));
                         t.draw();
                     }
@@ -224,7 +237,13 @@ export default class GameScene extends Phaser.Scene {
 
             case 1: // Quantum Jump: Empty (Gray) OR Weak Enemy (Power 1) -> Mine
                 if ((target.ownerID === 0 || (target.ownerID !== team.id && target.power === 1)) && !target.isShielded) {
-                    // Check if Special (Maybe allow Quantum on Special?) User said "Special ok".
+                    changes.push({
+                        tile: target,
+                        prevPower: target.power,
+                        prevOwner: target.ownerID,
+                        prevShield: target.isShielded
+                    });
+
                     target.setOwner(team.id);
                     target.setPower(1);
                     target.draw();
@@ -242,6 +261,12 @@ export default class GameScene extends Phaser.Scene {
                 if (target.ownerID === team.id) {
                     const fwTargets = [target, ...this.grid.getNeighbors(target).filter(n => n.ownerID === team.id)];
                     fwTargets.forEach(t => {
+                        changes.push({
+                            tile: t,
+                            prevPower: t.power,
+                            prevOwner: t.ownerID,
+                            prevShield: t.isShielded
+                        });
                         t.isShielded = true;
                         t.draw();
                     });
@@ -256,19 +281,18 @@ export default class GameScene extends Phaser.Scene {
                     const neighbors = this.grid.getNeighbors(target);
                     let converted = false;
                     neighbors.forEach(n => {
-                        // Scholarship Logic:
-                        // 1. Neutral: Requires My Power >= 2
-                        // 2. Enemy: Requires My Power > Enemy Power
                         const isNeutral = n.ownerID === 0;
                         const canCapture = isNeutral ? (target.power >= 2) : (n.power < target.power);
 
                         if (n.ownerID !== team.id && !n.isShielded && canCapture) {
+                            changes.push({
+                                tile: n,
+                                prevPower: n.power,
+                                prevOwner: n.ownerID,
+                                prevShield: n.isShielded
+                            });
                             n.setOwner(team.id);
-                            // Power remains same? Request says "Immediate Occupation". Usually keeps power or sets to 1.
-                            // Original request: "전투력이 관계 없이... 즉시 우리 팀으로 변경".
-                            // Modified request: "Own -> Weak Neighbors -> Mine".
-                            // I'll keep the power but change owner.
-                            n.setPower(1); // Set Power to 1 as requested
+                            n.setPower(1);
                             n.draw();
                             converted = true;
                         }
@@ -283,6 +307,12 @@ export default class GameScene extends Phaser.Scene {
             case 4: // Overclock: Own + Neighbors -> Power +3 (Max 5)
                 if (target.ownerID === team.id) {
                     // Target
+                    changes.push({
+                        tile: target,
+                        prevPower: target.power,
+                        prevOwner: target.ownerID,
+                        prevShield: target.isShielded
+                    });
                     target.setPower(Math.min(5, target.power + 3));
                     target.draw();
 
@@ -290,6 +320,12 @@ export default class GameScene extends Phaser.Scene {
                     const ocNeighbors = this.grid.getNeighbors(target);
                     ocNeighbors.forEach(n => {
                         if (n.ownerID === team.id) {
+                            changes.push({
+                                tile: n,
+                                prevPower: n.power,
+                                prevOwner: n.ownerID,
+                                prevShield: n.isShielded
+                            });
                             n.setPower(Math.min(5, n.power + 3));
                             n.draw();
                         }
@@ -301,35 +337,55 @@ export default class GameScene extends Phaser.Scene {
                 break;
 
             case 5: // Vaccine Code: Target -> Neighbors(Ponix) -> Neutral
-                // Target center can be anything.
                 const vNeighbors = this.grid.getNeighbors(target);
                 let cleaned = false;
+
+                // Helper to purify
+                const doPurify = (t) => {
+                    changes.push({
+                        tile: t,
+                        prevPower: t.power,
+                        prevOwner: t.ownerID,
+                        prevShield: t.isShielded
+                    });
+                    t.setOwner(0);
+                    t.setPower(1);
+                    t.isShielded = false;
+                    t.draw();
+                    cleaned = true;
+                    purifyCountBonus++;
+                };
+
                 vNeighbors.forEach(n => {
                     if (n.ownerID === 9 && !n.isShielded) { // Ponix
-                        n.setOwner(0);
-                        n.setPower(1);
-                        n.isShielded = false;
-                        n.draw();
-                        cleaned = true;
-                        team.purifyCount = (team.purifyCount || 0) + 1; // Increment Purify Count
+                        doPurify(n);
                     }
                 });
-                // Also check center? Request: "Target center... radius 1 Ponix".
+
                 if (target.ownerID === 9 && !target.isShielded) {
-                    target.setOwner(0);
-                    target.setPower(1);
-                    target.isShielded = false;
-                    target.draw();
-                    cleaned = true;
-                    team.purifyCount = (team.purifyCount || 0) + 1; // Increment Purify Count
+                    doPurify(target);
                 }
 
-                if (cleaned) success = true;
+                if (cleaned) {
+                    success = true;
+                    if (purifyCountBonus > 0) {
+                        team.purifyCount = (team.purifyCount || 0) + purifyCountBonus;
+                    }
+                }
                 else this.events.emit('showToast', "주변에 정화할 수 있는 포닉스가 없습니다 (또는 보호막).");
                 break;
         }
 
         if (success) {
+            // Push History
+            this.pushAction({
+                type: 'SKILL',
+                skillIdx: skillIdx,
+                changes: changes,
+                purifyCountBonus: purifyCountBonus,
+                cost: 0
+            });
+
             this.skillMode = null; // Exit mode
             this.gameManager.setTimerPaused(false); // Resume Timer
             this.events.emit('updateUI');
@@ -384,6 +440,33 @@ export default class GameScene extends Phaser.Scene {
                 lastAction.source.setPower(lastAction.prevSourcePower);
                 lastAction.source.setOwner(lastAction.prevSourceOwner); // Should be same team usually
                 break;
+
+            case 'SKILL_DICE':
+                // Revert AP Bonus
+                if (team) {
+                    team.ap -= lastAction.bonus;
+                    console.log(`Undo Random Dice: -${lastAction.bonus} AP`);
+                }
+                break;
+
+            case 'SKILL':
+                console.log(`Undoing Special Skill (Idx: ${lastAction.skillIdx})`);
+                // Revert all tile changes
+                if (lastAction.changes) {
+                    lastAction.changes.forEach(change => {
+                        change.tile.setOwner(change.prevOwner);
+                        change.tile.setPower(change.prevPower);
+                        change.tile.isShielded = change.prevShield;
+                        // change.tile.isPermanentShield = change.prevPermShield; // If we track this later
+                        change.tile.draw();
+                    });
+                }
+                // Revert Purify Count
+                if (lastAction.purifyCountBonus > 0 && team) {
+                    team.purifyCount = Math.max(0, (team.purifyCount || 0) - lastAction.purifyCountBonus);
+                }
+                break;
+
             case 'TURN_CHANGE':
                 console.log("Undoing Turn Change...");
                 // 1. Revert Turn/Round

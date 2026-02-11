@@ -55,6 +55,10 @@ export default class HexTile extends Phaser.GameObjects.Container {
         this.specialBorder = scene.add.graphics();
         this.add(this.specialBorder);
 
+        // Team Highlight Border (e.g., for Purple Team)
+        this.teamBorder = scene.add.graphics();
+        this.add(this.teamBorder);
+
         // Coordinate Label (Debug or Small) - Keeping minimal or removing?
         // User request didn't mention it, but usually good for debug.
         // Making it very subtle or hidden.
@@ -169,7 +173,48 @@ export default class HexTile extends Phaser.GameObjects.Container {
             this.diceSprite.setVisible(false);
         }
 
+<<<<<<< HEAD
 
+=======
+        // Special Tile Border (REMOVED as per user request)
+        this.specialBorder.clear();
+
+        // Team Highlight Border (Purple Team - ID 5)
+        this.teamBorder.clear();
+        if (this.ownerID === 5) {
+            // Darken Tint
+            // If Kingdom or Shielded, use Lighter Tint for visibility (User Request)
+            if (this.isPermanentShield || this.isShielded) {
+                this.baseSprite.setTint(0xCCCCCC); // Lighter for Castle/Shield
+            } else {
+                this.baseSprite.setTint(0x888888); // Darker tint for normal land
+            }
+
+            // Draw Bright Border
+            // Using same points as specialBorder/hitArea
+            const points = [
+                { x: 0, y: -39 },
+                { x: 34, y: -20 },
+                { x: 34, y: 20 },
+                { x: 0, y: 39 },
+                { x: -34, y: 20 },
+                { x: -34, y: -20 }
+            ];
+
+            this.teamBorder.lineStyle(2, 0xD080FF, 1.0); // Bright Purple Stroke
+            this.teamBorder.beginPath();
+            this.teamBorder.moveTo(points[0].x, points[0].y);
+            for (let i = 1; i < points.length; i++) {
+                this.teamBorder.lineTo(points[i].x, points[i].y);
+            }
+            this.teamBorder.closePath();
+            this.teamBorder.strokePath();
+            this.teamBorder.setDepth(1.6); // Above special border?
+
+        } else {
+            this.baseSprite.clearTint();
+        }
+>>>>>>> dfe1812 (Refactor: Improve visual clarity and fix undo logic)
     }
 
     // Proxy methods to trigger update

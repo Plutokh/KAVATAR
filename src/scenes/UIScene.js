@@ -5,7 +5,6 @@ export default class UIScene extends Phaser.Scene {
         super('UIScene');
         this.miniGames = [
             '주사위블랙잭',
-            '단어리듬게임',
             '인물퀴즈',
             '마주치는 눈빛이~',
             '청개구리 가위바위보',
@@ -13,8 +12,7 @@ export default class UIScene extends Phaser.Scene {
             '캐치마인드',
             '박수소리 크게내기',
             '이모지게임',
-            '타이머 10초 맞추기',
-            '퐁당퐁당'
+            '타이머 10초 맞추기'
         ];
         this.specialActions = [
             '📡 EMP 충격파',
