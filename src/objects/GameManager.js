@@ -165,7 +165,7 @@ export default class GameManager {
     resetTurnTimer() {
         // Base time is 50 seconds for ALL rounds as requested
         this.timeLeft = 50;
-        console.log("GameManager: resetTurnTimer called. Time Reset to 50s.");
+
 
         this.isPaused = false; // Reset pause on new turn
         if (this.timerEvent) {
@@ -177,11 +177,10 @@ export default class GameManager {
             delay: 1000,
             callback: () => {
                 if (this.isPaused) {
-                    console.log("GameManager: Timer Tick Skipped (Paused)");
                     return;
                 }
                 this.timeLeft--;
-                console.log(`GameManager: Timer Tick. Time Left: ${this.timeLeft}`);
+
                 this.scene.events.emit('updateUI');
                 if (this.timeLeft <= 0) {
                     this.scene.events.emit('showToast', "시간 초과! 턴이 강제 종료됩니다.");
@@ -189,6 +188,7 @@ export default class GameManager {
                 }
             },
             loop: true
+
         });
         console.log("GameManager: New timerEvent created.");
         this.scene.events.emit('updateUI');
@@ -199,7 +199,7 @@ export default class GameManager {
         if (this.timeLeft > 60) {
             this.timeLeft = 60;
         }
-        console.log(`Time Added: +${seconds}s. New Time: ${this.timeLeft}s`);
+
         this.scene.events.emit('updateUI');
         this.scene.events.emit('showToast', `시간 추가! (+${seconds}초)`);
     }

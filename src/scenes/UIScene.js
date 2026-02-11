@@ -342,9 +342,19 @@ export default class UIScene extends Phaser.Scene {
             this.turnApText.setVisible(false);
         }
 
-        // 3. Scoreboard
+        // 3. Scoreboard (Single-pass: count tiles + special bonuses at once)
         const counts = {};
-        gm.grid.getAllTiles().forEach(t => { counts[t.ownerID] = (counts[t.ownerID] || 0) + 1; });
+        const specialBonuses = {};
+        const tiles = gm.grid.getAllTiles();
+        for (let i = 0; i < tiles.length; i++) {
+            const t = tiles[i];
+            const oid = t.ownerID;
+            counts[oid] = (counts[oid] || 0) + 1;
+            if (oid >= 1 && oid <= 6 && t.isSpecial) {
+                if (!specialBonuses[oid]) specialBonuses[oid] = 0;
+                specialBonuses[oid] += (t.specialName === '창의학습관') ? 4 : 2;
+            }
+        }
 
         for (let i = 1; i <= 6; i++) {
             const team = gm.teamData[i];
@@ -368,7 +378,8 @@ export default class UIScene extends Phaser.Scene {
                 ui.land.setText(landCount);
             }
 
-            const income = gm.calculateIncome(i);
+            const territoryBonus = Math.floor(landCount / 4);
+            const income = 4 + territoryBonus + (specialBonuses[i] || 0);
             ui.ap.setText(`${team.ap} (+${income})`);
             ui.name.setStroke('#00000000', 0);
         }
@@ -854,9 +865,6 @@ export default class UIScene extends Phaser.Scene {
         }
 
         this.time.delayedCall(2000, () => {
-            this.drawWheel(); // Redraw (removed item)
-            this.wheelContainer.setAngle(0); // Reset
-
             this.drawWheel(); // Redraw (removed item)
             this.wheelContainer.setAngle(0); // Reset
 

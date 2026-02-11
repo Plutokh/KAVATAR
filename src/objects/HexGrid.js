@@ -9,6 +9,7 @@ export default class HexGrid {
         this.mapRadius = radius;
         this.mapId = mapId;
         this.tiles = new Map(); // key: "q,r", value: HexTile
+        this._tilesCache = null; // Cached array of tiles
 
         // Cache mathematical constants for performance
         this.SQRT3 = Math.sqrt(3);
@@ -58,7 +59,7 @@ export default class HexGrid {
         // Feature: Map 2 Specials
         // 1. Center (0,0)
         const center = this.getTile(0, 0);
-        if (center) center.setSpecial('중앙 타워');
+        if (center) { center.setSpecial('중앙 타워'); center.draw(); }
 
         // 2. Radius 3 Hexagon Vertices
         const rad3Verts = [
@@ -68,7 +69,7 @@ export default class HexGrid {
 
         rad3Verts.forEach(v => {
             const t = this.getTile(v.q, v.r);
-            if (t) t.setSpecial('위성 타워');
+            if (t) { t.setSpecial('위성 타워'); t.draw(); }
         });
 
         console.log(`Generated Map 2 (Custom Layout) with ${this.tiles.size} tiles.`);
@@ -147,7 +148,7 @@ export default class HexGrid {
 
         landmarksQR.forEach(lm => {
             const tile = this.getTile(lm.q, lm.r);
-            if (tile) tile.setSpecial(lm.name);
+            if (tile) { tile.setSpecial(lm.name); tile.draw(); }
         });
 
         // 2. New ID-based Landmarks (Requested)
@@ -164,10 +165,21 @@ export default class HexGrid {
             for (const tile of this.tiles.values()) {
                 if (tile.index === lm.id) {
                     tile.setSpecial(lm.name);
+                    tile.draw();
                     break;
                 }
             }
         });
+
+        // Tile 133: Override to normal (non-special)
+        for (const tile of this.tiles.values()) {
+            if (tile.index === 133) {
+                tile.isSpecial = false;
+                tile.specialName = '';
+                tile.draw();
+                break;
+            }
+        }
 
         console.log(`Generated Custom Map 1 with ${this.tiles.size} tiles.`);
     }
@@ -190,12 +202,13 @@ export default class HexGrid {
 
     createTile(q, r) {
         // Axial to Pixel conversion (pointy top)
-        const x = this.centerX + this.hexSize * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r);
+        const x = this.centerX + this.hexSize * (this.SQRT3 * q + this.HALF_SQRT3 * r);
         const y = this.centerY + this.hexSize * (3 / 2 * r);
 
-        const index = this.tiles.size + 1; // 1-based sequential index
-        const tile = new HexTile(this.scene, q, r, x, y, this.hexSize - 2, index); // -2 for gap
+        const index = this.tiles.size + 1;
+        const tile = new HexTile(this.scene, q, r, x, y, this.hexSize - 2, index);
         this.tiles.set(`${q},${r}`, tile);
+        this._tilesCache = null; // Invalidate cache
         return tile;
     }
 
@@ -204,20 +217,25 @@ export default class HexGrid {
     }
 
     getAllTiles() {
-        return Array.from(this.tiles.values());
+        if (!this._tilesCache) {
+            this._tilesCache = Array.from(this.tiles.values());
+        }
+        return this._tilesCache;
     }
 
     getDistance(a, b) {
         return (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
     }
 
+    // Static directions array for memory optimization
+    static DIRECTIONS = [
+        { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
+        { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
+    ];
+
     getNeighbors(tile) {
-        const directions = [
-            { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
-            { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }
-        ];
         const neighbors = [];
-        for (let dir of directions) {
+        for (const dir of HexGrid.DIRECTIONS) {
             const n = this.getTile(tile.q + dir.q, tile.r + dir.r);
             if (n) neighbors.push(n);
         }
@@ -226,9 +244,10 @@ export default class HexGrid {
 
     destroy() {
         this.tiles.forEach(tile => {
-            tile.destroy(); // Container destroy
+            tile.destroy();
         });
         this.tiles.clear();
+        this._tilesCache = null;
         console.log("HexGrid Destroyed");
     }
 }

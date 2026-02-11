@@ -52,6 +52,7 @@ export default class AIController {
             if (tile.ownerID === 9) {
                 if (tile.power < 5) {
                     tile.setPower(tile.power + 1);
+                    tile.draw();
                 }
             }
         }
@@ -80,7 +81,7 @@ export default class AIController {
             if (!neighbors) continue;
 
             let candidates = [];
-            let minPower = 999;
+            let minPower = Infinity;
 
             // Find min power among valid neighbors
             for (let n of neighbors) {

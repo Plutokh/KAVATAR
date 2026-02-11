@@ -8,18 +8,7 @@ export default class HexTile extends Phaser.GameObjects.Container {
         this.size = size;
         this.index = index;
 
-        // Make Container Interactive (Hexagon Hit Area)
-        // Pointy Top Hexagon Points
-        const hitPoints = [];
-        for (let i = 0; i < 6; i++) {
-            const angle_deg = 60 * i - 30;
-            const angle_rad = Math.PI / 180 * angle_deg;
-            hitPoints.push({
-                x: size * Math.cos(angle_rad),
-                y: size * Math.sin(angle_rad)
-            });
-        }
-        this.setInteractive(new Phaser.Geom.Polygon(hitPoints), Phaser.Geom.Polygon.Contains);
+
 
         // Game Data
         this.ownerID = 0; // 0: Neutral, 1:Orange, 2:Yellow, 3:Green, 4:Blue, 5:Purple, 6:Pink, 9:PONIX
@@ -52,17 +41,7 @@ export default class HexTile extends Phaser.GameObjects.Container {
         this.diceSprite = scene.add.sprite(0, 0, 'dice_1').setVisible(false);
         this.add(this.diceSprite);
 
-        // Special Tile Border (semi-transparent overlay for captured special tiles)
-        this.specialBorder = scene.add.graphics();
-        this.add(this.specialBorder);
 
-        // Coordinate Label (Debug or Small) - Keeping minimal or removing?
-        // User request didn't mention it, but usually good for debug.
-        // Making it very subtle or hidden.
-        this.coordText = scene.add.text(0, -30, `${q},${r}`, {
-            fontFamily: 'Arial', fontSize: '10px', color: '#000000'
-        }).setOrigin(0.5).setVisible(false); // Default Hidden
-        this.add(this.coordText);
 
         // Index Label (Visible tile number)
         this.indexText = scene.add.text(0, 28, `${index}`, {
@@ -147,10 +126,6 @@ export default class HexTile extends Phaser.GameObjects.Container {
         // Setup Phase: Highlight Start Candidates (if Neutral)
         if (this.ownerID === 0 && this.isStartCandidate) {
             this.baseSprite.setTint(0x00FF00); // Green Tint
-        }
-
-        if (this.ownerID === 0 && this.isStartCandidate) {
-            // Do nothing, keep green tint
         } else {
             this.baseSprite.clearTint();
         }
@@ -192,17 +167,14 @@ export default class HexTile extends Phaser.GameObjects.Container {
     setSpecial(name) {
         this.isSpecial = true;
         this.specialName = name;
-        this.updateVisuals();
     }
 
     setOwner(id) {
         this.ownerID = id;
-        this.updateVisuals();
     }
 
     setPower(val) {
         this.power = val;
-        this.updateVisuals();
     }
 
     select() {

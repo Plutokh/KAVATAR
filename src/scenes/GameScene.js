@@ -115,29 +115,7 @@ export default class GameScene extends Phaser.Scene {
         this.cleanup();
     }
 
-    handleInput(tile) {
-        if (!this.gameManager) return;
 
-        // Route to Setup Handler if in Setup Phase
-        if (this.gameManager.isSetupPhase) {
-            this.gameManager.handleSetupClick(tile);
-            return;
-        }
-
-        const team = this.gameManager.getCurrentTeam();
-        if (!team) return;
-
-        // Selection Logic
-        if (tile.ownerID === team.id) {
-            this.selectTile(tile);
-            console.log("Selected Own Tile");
-        } else {
-            // If we have a selected tile, try to attack it
-            if (this.selectedTile && this.selectedTile.ownerID === team.id) {
-                this.tryAttack(tile, team);
-            }
-        }
-    }
 
     selectTile(tile) {
         if (this.selectedTile) {
@@ -380,7 +358,6 @@ export default class GameScene extends Phaser.Scene {
                 const vNeighbors = this.grid.getNeighbors(target);
                 let cleaned = false;
                 const vacChanges = [];
-                let purifyCountInc = 0;
 
                 // Helper to apply
                 const applyVaccine = (t) => {
@@ -394,7 +371,6 @@ export default class GameScene extends Phaser.Scene {
                     t.setPower(1);
                     t.isShielded = false;
                     t.draw();
-                    purifyCountInc++;
                 };
 
                 vNeighbors.forEach(n => {
@@ -410,12 +386,10 @@ export default class GameScene extends Phaser.Scene {
                 }
 
                 if (cleaned) {
-                    team.purifyCount = (team.purifyCount || 0) + purifyCountInc;
                     this.pushAction({
                         type: 'SKILL',
                         skillIdx: 5,
-                        changes: vacChanges,
-                        purifyInc: purifyCountInc
+                        changes: vacChanges
                     });
                     success = true;
                 }
@@ -474,9 +448,11 @@ export default class GameScene extends Phaser.Scene {
                 lastAction.target.setOwner(lastAction.prevTargetOwner);
                 lastAction.target.setPower(lastAction.prevTargetPower);
                 lastAction.target.isShielded = lastAction.prevTargetShield;
+                lastAction.target.draw();
 
                 lastAction.source.setPower(lastAction.prevSourcePower);
-                lastAction.source.setOwner(lastAction.prevSourceOwner); // Should be same team usually
+                lastAction.source.setOwner(lastAction.prevSourceOwner);
+                lastAction.source.draw();
                 break;
             case 'TURN_CHANGE':
                 console.log("Undoing Turn Change...");
@@ -566,9 +542,7 @@ export default class GameScene extends Phaser.Scene {
                         change.tile.draw();
                     });
                 }
-                if (lastAction.skillIdx === 5 && lastAction.purifyInc && team) {
-                    team.purifyCount -= lastAction.purifyInc;
-                }
+
                 return;
 
 
@@ -678,20 +652,7 @@ export default class GameScene extends Phaser.Scene {
             return;
         }
 
-        // Refactored to Global Adjacency Check (like Expand)
-        const neighbors = this.grid.getNeighbors(target);
-        let hasAdjacentOwn = false;
-        for (let n of neighbors) {
-            if (n.ownerID === team.id) {
-                hasAdjacentOwn = true;
-                break;
-            }
-        }
 
-        if (!hasAdjacentOwn) {
-            this.events.emit('showToast', "인접한 아군 영토가 있어야 합니다!");
-            return;
-        }
 
         // Cost Check (Variable: Target Power)
         const cost = target.power;
@@ -809,6 +770,7 @@ export default class GameScene extends Phaser.Scene {
         });
 
         this.selectedTile.setPower(this.selectedTile.power + 1);
+        this.selectedTile.draw();
         team.ap -= 1;
         this.events.emit('updateUI');
         this.gameManager.addTime(5);
@@ -891,6 +853,8 @@ export default class GameScene extends Phaser.Scene {
                 target.setOwner(team.id);
                 target.setPower(source.power - 1);
                 source.setPower(1);
+                target.draw();
+                source.draw();
                 team.ap -= 2;
             } else {
                 console.log("Not enough power to conquer Neutral (Need >= 2)");
@@ -905,6 +869,8 @@ export default class GameScene extends Phaser.Scene {
             target.setOwner(team.id);
             target.setPower(Math.max(1, source.power - target.power));
             source.setPower(1);
+            target.draw();
+            source.draw();
             team.ap -= 2;
         } else {
             console.log("Attack Failed: Weak or Shielded");
