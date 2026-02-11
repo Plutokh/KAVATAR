@@ -13,10 +13,10 @@ export default class GameManager {
         // Team Data (0 is neutral placeholder)
         this.teamData = [
             null,
-            { id: 1, color: 'Orange', ap: 0, name: '주황 넙죽이' }, // North
-            { id: 2, color: 'Yellow', ap: 0, name: '노란 넙죽이' }, // East
-            { id: 3, color: 'Green', ap: 0, name: '초록 넙죽이' },  // West
-            { id: 4, color: 'Blue', ap: 0, name: '파란 넙죽이' },    // South
+            { id: 1, name: '주황 넙죽이', color: 0xff8400, ap: 10, expansionDone: false }, // Orange
+            { id: 2, name: '노랑 넙죽이', color: 0xf4cd18, ap: 10, expansionDone: false }, // Yellow
+            { id: 3, name: '초록 넙죽이', color: 0x86eb03, ap: 10, expansionDone: false }, // Greenst
+            { id: 4, color: 'Blue', ap: 0, name: '파랑 넙죽이' },    // South
             { id: 5, color: 'Purple', ap: 0, name: '보라 넙죽이' },  // Center
             { id: 6, color: 'Pink', ap: 0, name: '분홍 넙죽이' }   // Map 2 & 3 Special -> Now Map 1 too
         ];
