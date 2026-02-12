@@ -84,10 +84,7 @@ export default class HexTile extends Phaser.GameObjects.Container {
             }
         } else {
             // Teams
-            const colorMap = {
-                1: 'orange', 2: 'yellow', 3: 'green', 4: 'blue', 5: 'purple', 6: 'pink', 9: 'ponix'
-            };
-            const color = colorMap[this.ownerID] || 'brown';
+            const color = HexTile.COLOR_MAP[this.ownerID] || 'brown';
 
             // Suffix construction
             let suffix = '';
@@ -106,22 +103,8 @@ export default class HexTile extends Phaser.GameObjects.Container {
             textureKey = `land_${color}${suffix}`;
         }
 
-        // Fallback check?
-        // this.baseSprite.setTexture(textureKey);
-        // Note: SetTexture might fail if key doesn't exist (loading error?). 
-        // Assuming keys exist.
-        if (this.scene.textures.exists(textureKey)) {
-            this.baseSprite.setTexture(textureKey);
-        } else {
-            // Fallback for missing combinations (e.g. maybe kingdom_shield_selected doesn't exist perfectly)
-            // Try removing selected
-            if (textureKey.includes('_selected')) {
-                const fallback = textureKey.replace('_selected', '');
-                if (this.scene.textures.exists(fallback)) {
-                    this.baseSprite.setTexture(fallback);
-                }
-            }
-        }
+        // All textures are pre-loaded in BootScene, so set directly
+        this.baseSprite.setTexture(textureKey);
 
         // Setup Phase: Highlight Start Candidates (if Neutral)
         if (this.ownerID === 0 && this.isStartCandidate) {
@@ -170,7 +153,13 @@ export default class HexTile extends Phaser.GameObjects.Container {
     }
 
     setOwner(id) {
-        this.ownerID = id;
+        if (this.ownerID !== id) {
+            this.ownerID = id;
+            // Invalidate cached tile stats
+            if (this.scene?.gameManager) {
+                this.scene.gameManager._statsDirty = true;
+            }
+        }
     }
 
     setPower(val) {
@@ -187,3 +176,8 @@ export default class HexTile extends Phaser.GameObjects.Container {
         this.updateVisuals();
     }
 }
+
+// Static constant — created once, shared by all instances
+HexTile.COLOR_MAP = {
+    1: 'orange', 2: 'yellow', 3: 'green', 4: 'blue', 5: 'purple', 6: 'pink', 9: 'ponix'
+};

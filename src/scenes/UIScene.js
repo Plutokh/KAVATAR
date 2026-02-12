@@ -342,19 +342,10 @@ export default class UIScene extends Phaser.Scene {
             this.turnApText.setVisible(false);
         }
 
-        // 3. Scoreboard (Single-pass: count tiles + special bonuses at once)
-        const counts = {};
-        const specialBonuses = {};
-        const tiles = gm.grid.getAllTiles();
-        for (let i = 0; i < tiles.length; i++) {
-            const t = tiles[i];
-            const oid = t.ownerID;
-            counts[oid] = (counts[oid] || 0) + 1;
-            if (oid >= 1 && oid <= 6 && t.isSpecial) {
-                if (!specialBonuses[oid]) specialBonuses[oid] = 0;
-                specialBonuses[oid] += (t.specialName === '창의학습관') ? 4 : 2;
-            }
-        }
+        // 3. Scoreboard (Using cached tile stats — only recomputes when tiles change)
+        const stats = gm.getTileStats();
+        const counts = stats.counts;
+        const specialBonuses = stats.specialBonuses;
 
         for (let i = 1; i <= 6; i++) {
             const team = gm.teamData[i];
@@ -586,6 +577,22 @@ export default class UIScene extends Phaser.Scene {
     drawWheel() {
         this.wheelContainer.removeAll(true);
 
+        // Optimization: Use RenderTexture to cache the wheel drawing
+        const radius = this.wheelRadius || 250;
+        const width = radius * 2;
+        const height = radius * 2;
+
+        if (!this.wheelRT) {
+            this.wheelRT = this.add.renderTexture(0, 0, width, height);
+        } else {
+            this.wheelRT.resize(width, height);
+            this.wheelRT.clear();
+        }
+
+        // Add RT to container (centered)
+        this.wheelRT.setOrigin(0.5);
+        this.wheelContainer.add(this.wheelRT);
+
         let games;
         if (this.rouletteMode === 'SPECIAL') {
             // map objects to names for display
@@ -599,20 +606,22 @@ export default class UIScene extends Phaser.Scene {
                 fontFamily: 'Ghanachocolate', fontSize: '32px', fill: '#888888'
             }).setOrigin(0.5);
             this.wheelContainer.add(noGameText);
+
+            // Also clear RT if no games
+            this.wheelRT.clear();
             return;
         }
 
-        const radius = this.wheelRadius || 250;
         const sliceAngle = 360 / games.length;
-        const colors = [0x8B4513, 0xA0522D, 0xD2691E, 0xCD853F, 0xDEB887, 0xF4A460, 0xD2B48C]; // Brown shades: saddle brown, sienna, chocolate, peru, burlywood, sandy brown, tan
+        const colors = [0x8B4513, 0xA0522D, 0xD2691E, 0xCD853F, 0xDEB887, 0xF4A460, 0xD2B48C]; // Brown shades
 
         games.forEach((game, idx) => {
             const startAngle = Phaser.Math.DegToRad(idx * sliceAngle);
             const endAngle = Phaser.Math.DegToRad((idx + 1) * sliceAngle);
             const color = colors[idx % colors.length];
 
-            // Slice
-            const slice = this.add.graphics();
+            // Slice Graphics
+            const slice = this.make.graphics({ x: 0, y: 0, add: false });
             slice.fillStyle(color, 1);
             slice.lineStyle(2, 0x000000, 1);
             slice.beginPath();
@@ -621,40 +630,31 @@ export default class UIScene extends Phaser.Scene {
             slice.closePath();
             slice.fillPath();
             slice.strokePath();
-            this.wheelContainer.add(slice);
 
-            // Text Label (Radial)
+            // Draw slice to RT at center (radius, radius)
+            this.wheelRT.draw(slice, radius, radius);
+            slice.destroy();
+
+            // Text Label
             const midAngle = startAngle + (endAngle - startAngle) / 2;
-            const textRadius = radius * 0.6; // Slightly closer to center
+            const textRadius = radius * 0.6;
             const tx = Math.cos(midAngle) * textRadius;
             const ty = Math.sin(midAngle) * textRadius;
 
-            const label = this.add.text(tx, ty, game, {
-                fontFamily: 'Ghanachocolate', fontSize: '30px', fill: '#ffffff', stroke: '#201006', strokeThickness: 3
+            // Coordinates in RT space: (radius + tx, radius + ty)
+            const label = this.make.text({
+                x: radius + tx,
+                y: radius + ty,
+                text: game,
+                style: {
+                    fontFamily: 'Ghanachocolate', fontSize: '30px', fill: '#ffffff', stroke: '#201006', strokeThickness: 3
+                },
+                add: false
             }).setOrigin(0.5);
 
-            // Rotate text to radiate outward
-            // At 0 (Right), rotation should be 0.
-            // At 90 (Bottom), rotation should be 90.
-            // So rotation = midAngle.
             label.setRotation(midAngle);
-
-            // Adjust origin?
-            // If origin is 0.5, 0.5 (Center), it rotates around its center.
-            // If we want it to read "Outward", we might want the text BASELINE to be perpendicular to radius? No, user said "Center to Outward".
-            // Left-to-Right reading means: 'Start' at Center side, 'End' at Outer side.
-            // So we want the text to be aligned with the radius line.
-            // Set Origin to (0.5, 0.5) should be fine if positioned correctly.
-            // But 'reading direction' matters.
-            // At 180 (Left), rotation is PI. Text is upside down?
-            // Yes. To fix readabilty:
-            // if (midAngle > Math.PI/2 && midAngle < 3*Math.PI/2) { label.setRotation(midAngle + Math.PI); }
-            // But user specifically said "Center to Outward", implying uniform direction regardless of upside-down-ness?
-            // "중심으로부터 바깥으로 적어나가는 방향".
-            // This usually means the 'start' of the string is closer to center.
-            // So standard rotation = midAngle is correct. Upside down on left side is expected in this style.
-
-            this.wheelContainer.add(label);
+            this.wheelRT.draw(label);
+            label.destroy();
         });
     }
 
@@ -897,5 +897,3 @@ export default class UIScene extends Phaser.Scene {
         return colors[id] || '#deb989';
     }
 }
-
-

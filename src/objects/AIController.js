@@ -4,45 +4,65 @@ export default class AIController {
         this.grid = grid;
         this.timers = [];
         this.activeTweens = [];
+
+        // Graphics object pool for infection visuals
+        this._graphicsPool = [];
+    }
+
+    // Get a Graphics object from pool or create a new one
+    _getGraphics() {
+        for (let i = 0; i < this._graphicsPool.length; i++) {
+            const g = this._graphicsPool[i];
+            if (!g._inUse) {
+                g._inUse = true;
+                g.clear();
+                g.setAlpha(1);
+                g.setVisible(true);
+                return g;
+            }
+        }
+        // Pool exhausted — create new
+        const g = this.scene.add.graphics();
+        g._inUse = true;
+        this._graphicsPool.push(g);
+        return g;
+    }
+
+    // Return a Graphics object to the pool
+    _releaseGraphics(g) {
+        g._inUse = false;
+        g.setVisible(false);
     }
 
     runTurn(callback) {
-        // AI Turn Logic
         console.log(`AIController.runTurn Start: Round ${this.scene.gameManager.currentRound}`);
 
-        // Safety: If scene is invalid, stop
         if (!this.scene || !this.grid) {
             console.error("AIController: Scene or Grid missing!");
             return;
         }
 
         try {
-            // Coroutine-like behavior
-            // 1. Grow
             this.growPhase();
 
             this.forceTimer(500, () => {
                 if (!this.scene) return;
 
                 try {
-                    // 2. Infect
-                    const duration = this.infectPhase(); // Get duration
+                    const duration = this.infectPhase();
 
-                    // Wait for infections to finish + buffer
                     this.forceTimer(duration + 500, () => {
                         if (!this.scene) return;
                         console.log("AI Turn Complete. Calling callback.");
-                        callback(); // End AI Turn
+                        callback();
                     });
                 } catch (err) {
                     console.error("Error in AI Infect Phase:", err);
-                    // Force End Turn to prevent Softlock
                     callback();
                 }
             });
         } catch (err) {
             console.error("Error in AI Grow Phase:", err);
-            // Force End Turn
             callback();
         }
     }
@@ -74,7 +94,7 @@ export default class AIController {
         validSources.sort((a, b) => a.index - b.index);
 
         // 3. Select Targets (Prevention of Overlap)
-        const claimedTargets = new Set(); // Track tiles targeted in this turn
+        const claimedTargets = new Set();
 
         for (let tile of validSources) {
             const neighbors = this.grid.getNeighbors(tile);
@@ -83,15 +103,13 @@ export default class AIController {
             let candidates = [];
             let minPower = Infinity;
 
-            // Find min power among valid neighbors
             for (let n of neighbors) {
-                // Check: Valid neighbor, Not Ponix, Weaker, Not Shielded, AND Not already claimed
                 if (n && n.ownerID !== 9 && n.power < tile.power && !n.isShielded && !claimedTargets.has(n)) {
                     if (n.power < minPower) {
                         minPower = n.power;
-                        candidates = [n]; // Reset with new min
+                        candidates = [n];
                     } else if (n.power === minPower) {
-                        candidates.push(n); // Add to tie
+                        candidates.push(n);
                     }
                 }
             }
@@ -102,42 +120,35 @@ export default class AIController {
                 candidates = neutralCandidates;
             }
 
-            // Select Target
             if (candidates.length > 0) {
-                // Random selection from best candidates
                 const bestTarget = candidates[Math.floor(Math.random() * candidates.length)];
-
                 toInfect.push({ source: tile, target: bestTarget });
-                claimedTargets.add(bestTarget); // Mark as claimed for subsequent units
+                claimedTargets.add(bestTarget);
             }
         }
 
-        // 4. Apply Infection with Visuals
+        // 4. Apply Infection with Visuals (using pooled Graphics)
         if (toInfect.length === 0) return 0;
 
         toInfect.forEach((action, index) => {
-            // Speed up: 0.1s (100ms) interval
             this.forceTimer(index * 100, () => {
                 if (!this.scene) return;
                 try {
                     const { source, target } = action;
                     if (!source || !target) return;
 
-                    // Double check (redundant but safe): Ensure target wasn't converted by a FASTER event in edge cases
-                    // But since we are sequential, it should be fine.
-
-                    // Visual Line
-                    const graphics = this.scene.add.graphics();
+                    // Visual Line — reuse pooled Graphics
+                    const graphics = this._getGraphics();
                     graphics.lineStyle(4, 0xff0000, 1);
                     graphics.lineBetween(source.x, source.y, target.x, target.y);
 
-                    // Fade out
+                    // Fade out then return to pool
                     const tween = this.scene.tweens.add({
                         targets: graphics,
                         alpha: 0,
-                        duration: 300, // Faster fade
+                        duration: 300,
                         onComplete: () => {
-                            graphics.destroy();
+                            this._releaseGraphics(graphics);
                         }
                     });
                     this.activeTweens.push(tween);
@@ -152,7 +163,6 @@ export default class AIController {
             });
         });
 
-        // Return total duration: (count * 100) + buffer
         return (toInfect.length * 100);
     }
 

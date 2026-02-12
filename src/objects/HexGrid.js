@@ -151,9 +151,12 @@ export default class HexGrid {
             if (tile) { tile.setSpecial(lm.name); tile.draw(); }
         });
 
-        // 2. New ID-based Landmarks (Requested)
+        // 2. New ID-based Landmarks — use index map for O(1) lookup
+        const indexMap = new Map();
+        this.tiles.forEach(tile => indexMap.set(tile.index, tile));
+
         const landmarksID = [
-            { id: 127, name: '대운동장' }, // Moved to 127
+            { id: 127, name: '대운동장' },
             { id: 5, name: '북측 연구소' },
             { id: 70, name: '미르나래관' },
             { id: 150, name: '나노종합기술원' },
@@ -161,25 +164,13 @@ export default class HexGrid {
         ];
 
         landmarksID.forEach(lm => {
-            // Find tile by index (Iterate since map uses string keys)
-            for (const tile of this.tiles.values()) {
-                if (tile.index === lm.id) {
-                    tile.setSpecial(lm.name);
-                    tile.draw();
-                    break;
-                }
-            }
+            const tile = indexMap.get(lm.id);
+            if (tile) { tile.setSpecial(lm.name); tile.draw(); }
         });
 
         // Tile 133: Override to normal (non-special)
-        for (const tile of this.tiles.values()) {
-            if (tile.index === 133) {
-                tile.isSpecial = false;
-                tile.specialName = '';
-                tile.draw();
-                break;
-            }
-        }
+        const tile133 = indexMap.get(133);
+        if (tile133) { tile133.isSpecial = false; tile133.specialName = ''; tile133.draw(); }
 
         console.log(`Generated Custom Map 1 with ${this.tiles.size} tiles.`);
     }

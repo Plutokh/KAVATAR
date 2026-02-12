@@ -28,17 +28,17 @@ export default class TitleScene extends Phaser.Scene {
             color: '#deb989',
             stroke: '#3E2723',
             strokeThickness: 4,
-            padding: {x: 30, y: 15}
+            padding: { x: 30, y: 15 }
         }).setOrigin(0.5).setInteractive().setScale(1.0); // 150% size
 
         // Hover effect
         startBtn.on('pointerover', () => {
-            startBtn.setStyle({color: '#a8875b'}); // Gold on hover (preserves fontFamily)
+            startBtn.setStyle({ color: '#a8875b' }); // Gold on hover (preserves fontFamily)
             startBtn.setScale(1.0); // 1.5 base * 1.1 hover
         });
 
         startBtn.on('pointerout', () => {
-            startBtn.setStyle({color: '#deb989'}); // Beige default (preserves fontFamily)
+            startBtn.setStyle({ color: '#deb989' }); // Beige default (preserves fontFamily)
             startBtn.setScale(1.0); // Back to 150% base
         });
 
@@ -46,6 +46,35 @@ export default class TitleScene extends Phaser.Scene {
         startBtn.on('pointerdown', () => {
             this.startGame(1);
         });
+
+        // Continue Button (Only if Save Exists)
+        const SaveManager = (await import('../utils/SaveManager.js')).default;
+        if (SaveManager.hasSave()) {
+            console.log("Save Found. Adding Continue Button.");
+            const continueBtn = this.add.text(1650, 1020, 'CONTINUE', { // Position below START
+                fontFamily: 'Ghanachocolate',
+                fontSize: '40px',
+                color: '#deb989',
+                stroke: '#3E2723',
+                strokeThickness: 4,
+                padding: { x: 10, y: 5 }
+            }).setOrigin(0.5).setInteractive();
+
+            continueBtn.on('pointerover', () => {
+                continueBtn.setStyle({ color: '#a8875b' });
+                continueBtn.setScale(1.1);
+            });
+
+            continueBtn.on('pointerout', () => {
+                continueBtn.setStyle({ color: '#deb989' });
+                continueBtn.setScale(1.0);
+            });
+
+            continueBtn.on('pointerdown', () => {
+                console.log("Continue Clicked");
+                this.scene.start('GameScene', { loadGame: true });
+            });
+        }
     }
 
     createCard(x, y, mapData) {

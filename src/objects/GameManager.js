@@ -1,3 +1,5 @@
+import SaveManager from '../utils/SaveManager.js';
+
 export default class GameManager {
     constructor(scene, grid) {
         this.scene = scene;
@@ -28,6 +30,10 @@ export default class GameManager {
             onTurnStart: [],
             onTurnEnd: []
         };
+
+        // Tile stats cache (invalidated when tile ownership changes)
+        this._statsDirty = true;
+        this._statsCache = null;
     }
 
     initGame() {
@@ -165,20 +171,32 @@ export default class GameManager {
     resetTurnTimer() {
         // Base time is 50 seconds for ALL rounds as requested
         this.timeLeft = 50;
-
-
         this.isPaused = false; // Reset pause on new turn
+
         if (this.timerEvent) {
             console.log("GameManager: Existing timer removed.");
             this.timerEvent.remove();
         }
 
+        this.startTimerEvent();
+        console.log("GameManager: New timerEvent created.");
+        this.scene.events.emit('updateUI');
+    }
+
+    restoreTimer() {
+        if (this.isSetupPhase) return;
+
+        if (this.timerEvent) this.timerEvent.remove();
+        this.startTimerEvent();
+        console.log(`GameManager: Timer restored with ${this.timeLeft}s.`);
+        this.scene.events.emit('updateUI');
+    }
+
+    startTimerEvent() {
         this.timerEvent = this.scene.time.addEvent({
             delay: 1000,
             callback: () => {
-                if (this.isPaused) {
-                    return;
-                }
+                if (this.isPaused) return;
                 this.timeLeft--;
 
                 this.scene.events.emit('updateUI');
@@ -188,10 +206,7 @@ export default class GameManager {
                 }
             },
             loop: true
-
         });
-        console.log("GameManager: New timerEvent created.");
-        this.scene.events.emit('updateUI');
     }
 
     addTime(seconds) {
@@ -204,10 +219,37 @@ export default class GameManager {
         this.scene.events.emit('showToast', `시간 추가! (+${seconds}초)`);
     }
 
+    // Cached tile stats — only recomputes when _statsDirty is true
+    getTileStats() {
+        if (!this._statsDirty && this._statsCache) {
+            return this._statsCache;
+        }
+
+        const counts = {};
+        const specialBonuses = {};
+        let totalTiles = 0;
+
+        const tiles = this.grid.getAllTiles();
+        for (let i = 0; i < tiles.length; i++) {
+            const t = tiles[i];
+            totalTiles++;
+            const oid = t.ownerID;
+            counts[oid] = (counts[oid] || 0) + 1;
+
+            if (oid >= 1 && oid <= 6 && t.isSpecial) {
+                if (!specialBonuses[oid]) specialBonuses[oid] = 0;
+                specialBonuses[oid] += (t.specialName === '창의학습관') ? 4 : 2;
+            }
+        }
+
+        this._statsCache = { counts, specialBonuses, totalTiles };
+        this._statsDirty = false;
+        return this._statsCache;
+    }
+
     startTurn(prevTurn = null, prevRound = null, specialEvent = null) {
         if (this.currentTurn === 9) {
-            // AI Turn
-            // Ponix Maintenance: Clear Shields (if any)
+            // AI Turn — Clear Ponix Shields
             for (let tile of this.grid.getAllTiles()) {
                 if (tile.ownerID === 9 && tile.isShielded && !tile.isPermanentShield) {
                     tile.isShielded = false;
@@ -216,99 +258,103 @@ export default class GameManager {
             }
             this.scene.events.emit('aiTurnStart');
         } else {
-            // Team Turn
+            // Team Turn — SINGLE-PASS: income + shield/decay + expansion check
             console.log("GameManager: startTurn executed for Team " + this.currentTurn);
-            const income = this.calcAP(this.currentTurn);
-            let expansionBonus = 0;
             console.log(`Turn Start: Team ${this.currentTurn}`);
 
-            // Expansion Complete Bonus Check
-            const currentTeam = this.teamData[this.currentTurn];
-            if (currentTeam && !currentTeam.expansionDone) {
-                if (this.checkExpansionComplete(this.currentTurn)) {
-                    expansionBonus = 10;
-                    currentTeam.expansionDone = true;
-                    currentTeam.ap += 10;
-                    console.log(`Bonus: Team ${this.currentTurn} Expansion Complete (+10 AP)`);
-                    this.scene.events.emit('showToast', "확장 완료 보너스! (+10 Pt)");
-                }
-            }
-
-            // 0. RESET TIMER
-            this.resetTurnTimer();
-
-            // Track changes for Undo
-            // We consolidate ALL tile changes (shield expiry, decay) into one list
+            let tileCount = 0;
+            let specialBonus = 0;
+            let hasNeutralNeighbor = false;
             const changes = [];
 
-            // Shields applied last turn protect until NOW (one full round).
-            // Also: Power Decay (Power decreases by 1 each round, min 1)
             for (let tile of this.grid.getAllTiles()) {
                 if (tile.ownerID === this.currentTurn) {
+                    tileCount++;
+
+                    // Income: count specials
+                    if (tile.isSpecial) {
+                        specialBonus += (tile.specialName === '창의학습관') ? 4 : 2;
+                    }
+
+                    // Shield expiry + Power decay
                     let changed = false;
                     const prevPower = tile.power;
                     const prevShield = tile.isShielded;
 
-                    // 1. Clear Shield (Unless Permanent HQ)
                     if (tile.isShielded && !tile.isPermanentShield) {
                         tile.isShielded = false;
                         changed = true;
-                        // console.log(`Shield Expired on Tile ${tile.index}`);
                     }
-
-                    // 2. Power Decay
                     if (tile.power > 1) {
                         tile.power -= 1;
                         changed = true;
                     }
-
                     if (changed) {
-                        changes.push({
-                            tile: tile,
-                            prevPower: prevPower,
-                            prevShield: prevShield
-                        });
+                        changes.push({ tile, prevPower, prevShield });
                         tile.draw();
+                    }
+
+                    // Expansion check (early exit once found)
+                    if (!hasNeutralNeighbor) {
+                        const neighbors = this.grid.getNeighbors(tile);
+                        for (const n of neighbors) {
+                            if (n.ownerID === 0) {
+                                hasNeutralNeighbor = true;
+                                break;
+                            }
+                        }
                     }
                 }
             }
 
+            // Calculate income (skip Round 1)
+            let income = 0;
+            if (this.currentRound !== 1) {
+                const territoryBonus = Math.floor(tileCount / 4);
+                income = 4 + territoryBonus + specialBonus;
+                this.teamData[this.currentTurn].ap += income;
+                console.log(`Team ${this.currentTurn} gained ${income} AP. Total: ${this.teamData[this.currentTurn].ap}`);
+            } else {
+                console.log(`Round 1: Team ${this.currentTurn} uses initial AP.`);
+            }
+
+            // Expansion Complete Bonus
+            let expansionBonus = 0;
+            const currentTeam = this.teamData[this.currentTurn];
+            if (currentTeam && !currentTeam.expansionDone && tileCount > 0 && !hasNeutralNeighbor) {
+                expansionBonus = 10;
+                currentTeam.expansionDone = true;
+                currentTeam.ap += 10;
+                console.log(`Bonus: Team ${this.currentTurn} Expansion Complete (+10 AP)`);
+                this.scene.events.emit('showToast', "확장 완료 보너스! (+10 Pt)");
+            }
+
+            // Reset Timer
+            this.resetTurnTimer();
+
             // Record Turn Change for Undo
-            // We only record if we came from a previous turn (not game start) matches normal flow
             if (prevTurn && this.scene) {
                 this.scene.pushAction({
                     type: 'TURN_CHANGE',
                     prevTurn: prevTurn,
                     prevRound: prevRound,
                     newTurn: this.currentTurn,
-                    income: income + expansionBonus, // Store TOTAL income to deduct on undo
-                    expansionBonusGiven: (expansionBonus > 0), // Flag to revert status
-                    changes: changes, // Unified changes array
-                    specialEvent: specialEvent // Store Special Event (like Ponix Spawn)
+                    income: income + expansionBonus,
+                    expansionBonusGiven: (expansionBonus > 0),
+                    changes: changes,
+                    specialEvent: specialEvent
                 });
             }
 
-            this.scene.events.emit('updateUI'); // Notify UI to update
+            this.scene.events.emit('updateUI');
         }
     }
 
     calculateIncome(teamId) {
-        // Base 3 + Bonus (1 per 5 tiles) + Special Bonus
-        let tileCount = 0;
-        let specialBonus = 0;
-
-        for (let tile of this.grid.getAllTiles()) {
-            if (tile.ownerID === teamId) {
-                tileCount++;
-                if (tile.isSpecial) {
-                    if (tile.specialName === '창의학습관') {
-                        specialBonus += 4; // +4 AP for Creative Learning Center
-                    } else {
-                        specialBonus += 2; // +2 AP for other Landmarks
-                    }
-                }
-            }
-        }
+        // Uses cached tile stats to avoid full iteration
+        const stats = this.getTileStats();
+        const tileCount = stats.counts[teamId] || 0;
+        const specialBonus = stats.specialBonuses[teamId] || 0;
         const territoryBonus = Math.floor(tileCount / 4);
         return 4 + territoryBonus + specialBonus;
     }
@@ -383,7 +429,9 @@ export default class GameManager {
             specialEvent = this.triggerPart2();
         }
 
-        this.checkVictory();
+        if (this.checkVictory()) {
+            return; // Stop if game ended
+        }
 
         // Pass previous state to startTurn to record history
         this.startTurn(prevTurn, prevRound, specialEvent);
@@ -391,33 +439,22 @@ export default class GameManager {
 
     checkVictory() {
         if (!this.isPart2 && this.currentRound > 8) {
-            this.triggerPart2(); // No special event return here as unlikely to be undone from arbitrary logic trigger
-            return;
+            this.triggerPart2();
+            return false;
         }
 
-        // Part 2 Win/Loss
+        // Part 2 Win/Loss — uses cached stats
         if (this.isPart2) {
-            let ponixCount = 0;
-            let totalTiles = 0;
-            const counts = {}; // Track land counts for players
-
-            const tiles = this.grid.getAllTiles();
-            for (let tile of tiles) {
-                totalTiles++;
-                if (tile.ownerID === 9) {
-                    ponixCount++;
-                } else if (tile.ownerID >= 1 && tile.ownerID <= 6) {
-                    counts[tile.ownerID] = (counts[tile.ownerID] || 0) + 1;
-                }
-            }
+            const stats = this.getTileStats();
+            const ponixCount = stats.counts[9] || 0;
+            const totalTiles = stats.totalTiles;
 
             // Condition A: Ponix eliminated (AFTER Round 9)
             if (this.currentRound > 9 && ponixCount === 0) {
-                // Find MVP (Most Tiles)
                 let maxTiles = -1;
                 let winnerId = 1;
                 for (let id = 1; id <= 6; id++) {
-                    const c = counts[id] || 0;
+                    const c = stats.counts[id] || 0;
                     if (c > maxTiles) {
                         maxTiles = c;
                         winnerId = id;
@@ -429,7 +466,8 @@ export default class GameManager {
                     winner: 'Player',
                     winningTeam: winningTeam
                 });
-                return;
+                SaveManager.clearSave();
+                return true;
             }
 
             // Condition B: Ponix > 50%
@@ -438,9 +476,11 @@ export default class GameManager {
                     winner: 'Ponix',
                     winningTeam: '포닉스'
                 });
-                return;
+                SaveManager.clearSave();
+                return true;
             }
         }
+        return false;
     }
 
     endRound() {

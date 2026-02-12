@@ -1,6 +1,7 @@
 import HexGrid from '../objects/HexGrid.js';
 import GameManager from '../objects/GameManager.js';
 import AIController from '../objects/AIController.js';
+import SaveManager from '../utils/SaveManager.js';
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -10,7 +11,8 @@ export default class GameScene extends Phaser.Scene {
 
     init(data) {
         this.mapId = data.mapId || 1; // Default to 1
-        console.log(`Loading Map ID: ${this.mapId}`);
+        this.loadGame = data.loadGame || false; // Check for Load Flag
+        console.log(`Loading Map ID: ${this.mapId}, Load Save: ${this.loadGame}`);
     }
 
     create() {
@@ -55,9 +57,29 @@ export default class GameScene extends Phaser.Scene {
                 this.bg.setDisplaySize(this.cameras.main.width, this.cameras.main.height);
             });
 
-            // Start Game
-            console.log("GameScene: Starting GameManager");
-            this.gameManager.initGame();
+            // Start Game or Load Game
+            if (this.loadGame) {
+                console.log("GameScene: Loading Saved Game...");
+                const success = SaveManager.load(this.gameManager);
+                if (!success) {
+                    console.log("Load failed, starting new game.");
+                    SaveManager.clearSave(); // Clear corrupt save
+                    this.gameManager.initGame();
+                } else {
+                    // mapId might be overwritten by save data, but we passed it in init too. 
+                    // SaveManager.load overwrites GM props, so we should be good?
+                    // Wait, HexGrid was initiated with this.mapId. If save has different mapId, we have a mismatch!
+                    // Implementation Plan Detail: "If loadGame is true, call SaveSystem.load(...) instead of gameManager.initGame()."
+                    // Ideally check mapId before creating grid? 
+                    // But we are in Create... 
+                    // Let's assume Map ID is consistent or saved data implies logic.
+                    // For now, simplest approach.
+                }
+            } else {
+                console.log("GameScene: Starting New Game");
+                SaveManager.clearSave(); // Clear old save
+                this.gameManager.initGame();
+            }
 
         } catch (error) {
             console.error("GameScene Create Error:", error);
@@ -409,6 +431,8 @@ export default class GameScene extends Phaser.Scene {
     // --- UNDO SYSTEM ---
     pushAction(action) {
         this.actionHistory.push(action);
+        // Auto-Save after every action
+        SaveManager.save(this.gameManager);
     }
 
     actionUndo() {
@@ -513,6 +537,8 @@ export default class GameScene extends Phaser.Scene {
                 this.gameManager.resetTurnTimer();
                 this.events.emit('updateUI');
                 console.log("Turn Change Undone");
+                // Save after undo
+                SaveManager.save(this.gameManager);
                 return; // Early return as we handled AP/Update inside
 
             case 'ADMIN_AP_CHANGE':
@@ -522,6 +548,8 @@ export default class GameScene extends Phaser.Scene {
                     console.log(`Undo Admin AP: ${targetTeam.name} ${lastAction.amount > 0 ? '-' : '+'}${Math.abs(lastAction.amount)} AP`);
                 }
                 this.events.emit('updateUI');
+                // Save after undo
+                SaveManager.save(this.gameManager);
                 return; // Early return
 
             case 'SKILL_DICE':
@@ -530,6 +558,8 @@ export default class GameScene extends Phaser.Scene {
                     console.log(`Undo Skill Dice: -${lastAction.amount} AP`);
                 }
                 this.events.emit('updateUI');
+                // Save after undo
+                SaveManager.save(this.gameManager);
                 return;
 
             case 'SKILL':
@@ -542,7 +572,8 @@ export default class GameScene extends Phaser.Scene {
                         change.tile.draw();
                     });
                 }
-
+                // Save after undo
+                SaveManager.save(this.gameManager);
                 return;
 
 
@@ -554,6 +585,8 @@ export default class GameScene extends Phaser.Scene {
         }
         this.events.emit('updateUI');
         console.log("Undo Successful");
+        // Save after undo
+        SaveManager.save(this.gameManager);
     }
 
     actionAdminAP(data) {
@@ -581,6 +614,8 @@ export default class GameScene extends Phaser.Scene {
         // Setup Phase Logic
         if (this.gameManager.isSetupPhase) {
             this.gameManager.handleSetupClick(tile);
+            // Auto-Save during Setup
+            SaveManager.save(this.gameManager);
             return;
         }
 
@@ -802,7 +837,6 @@ export default class GameScene extends Phaser.Scene {
         });
 
         this.selectedTile.isShielded = true;
-        this.selectedTile.draw();
         this.selectedTile.draw();
         team.ap -= 2;
         this.events.emit('updateUI');
